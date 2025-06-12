@@ -42,3 +42,8 @@ app-example
 # memo text
 scripts_output_files.txt
 app_output_files.txt
+app/api/routes/__pycache__
+app/__pycache__
+app/services/__pycache__
+app/models/__pycache__
+app/core/__pycache__

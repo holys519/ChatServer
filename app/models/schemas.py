@@ -99,3 +99,38 @@ class ModelInfo(BaseModel):
 
 class ModelsResponse(BaseModel):
     models: List[ModelInfo]
+
+# チャット履歴管理用のスキーマ
+class ChatMessage(BaseModel):
+    id: str
+    content: str
+    is_user: bool
+    timestamp: datetime
+
+class ChatSession(BaseModel):
+    id: str
+    title: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+    messages: List[ChatMessage] = []
+    model_id: Optional[str] = None
+
+class ChatSessionCreate(BaseModel):
+    title: str
+    model_id: Optional[str] = None
+
+class ChatSessionUpdate(BaseModel):
+    title: Optional[str] = None
+    model_id: Optional[str] = None
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: List[ChatMessage]
+    model_id: Optional[str] = None
+
+class ChatSessionListResponse(BaseModel):
+    sessions: List[ChatSessionResponse]

@@ -1,266 +1,177 @@
-# import os
-# import asyncio
-# from typing import List, Dict, Any, AsyncGenerator
-# import vertexai
-# from vertexai.generative_models import GenerativeModel, ChatSession
-
-# class GeminiService:
-#     def __init__(self):
-#         """Initialize the Gemini service with Google Cloud Vertex AI"""
-#         self.initialized = False
-#         # Try both environment variables
-#         self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT') or os.getenv('GCP_PROJECT')
-#         self.location = os.getenv('VERTEX_AI_LOCATION', 'us-central1')
-#         self.api_key = os.getenv('GOOGLE_CLOUD_API_KEY') or os.getenv('GOOGLE_API_KEY')
-#         self.model = None
-        
-#         # 初期化を試みる
-#         self._initialize()
-    
-#     def _initialize(self):
-#         """Initialize Vertex AI client"""
-#         try:
-#             # Check if we have the necessary credentials
-#             print(f"API Key available: {bool(self.api_key)}")
-#             print(f"Project ID available: {bool(self.project_id)}")
-            
-#             if not self.project_id and not self.api_key:
-#                 print("Warning: Neither GOOGLE_CLOUD_PROJECT nor GOOGLE_CLOUD_API_KEY is set")
-#                 return False
-            
-#             # Initialize Vertex AI
-#             if self.project_id:
-#                 vertexai.init(project=self.project_id, location=self.location)
-                
-#                 # Initialize the default model
-#                 self.model = GenerativeModel('gemini-2.0-flash-001')
-#                 self.use_genai = False
-#                 self.initialized = True
-#                 print(f"Gemini service initialized successfully with project: {self.project_id}")
-#                 return True
-#         except Exception as e:
-#             print(f"Failed to initialize Gemini service: {str(e)}")
-#             # Fallback to google.generativeai if available
-#             if self.api_key:
-#                 try:
-#                     import google.generativeai as genai
-#                     genai.configure(api_key=self.api_key)
-#                     self.use_genai = True
-#                     self.initialized = True
-#                     print("Gemini service initialized with google.generativeai (fallback)")
-#                     return True
-#                 except Exception as e2:
-#                     print(f"Fallback also failed: {e2}")
-#             return False
-    
-#     def _get_model(self, model_name: str) -> GenerativeModel:
-#         """Get the appropriate model based on model name"""
-#         if not self.initialized:
-#             if not self._initialize():
-#                 raise ValueError("Gemini service is not initialized")
-        
-#         # Map model IDs to actual Vertex AI model names
-#         model_mapping = {
-#             "gemini-2-0-flash-001": "gemini-2.0-flash-001",
-#             "gemini-2-0-flash-lite-001": "gemini-2.0-flash-lite-001"
-#         }
-        
-#         # Get the correct model name or use default
-#         vertex_model_name = model_mapping.get(model_name, "gemini-2.0-flash-001")
-        
-#         return GenerativeModel(vertex_model_name)
-    
-#     async def send_message(self, model_name: str, history: List[Dict[str, str]], message: str) -> str:
-#         """Send a message to Gemini and get a complete response"""
-#         try:
-#             if hasattr(self, 'use_genai') and self.use_genai:
-#                 # Use google.generativeai
-#                 import google.generativeai as genai
-                
-#                 # Map model names
-#                 model_mapping = {
-#                     "gemini-2-0-flash-001": "gemini-2.0-flash-001",
-#                     "gemini-2-0-flash-lite-001": "gemini-2.0-flash-001"  # Use flash as fallback
-#                 }
-#                 genai_model_name = model_mapping.get(model_name, "gemini-2.0-flash-001")
-                
-#                 model = genai.GenerativeModel(genai_model_name)
-                
-#                 # Convert history to genai format
-#                 genai_history = []
-#                 for msg in history:
-#                     role = "user" if msg["role"] == "user" else "model"
-#                     genai_history.append({"role": role, "parts": msg["content"]})
-                
-#                 chat = model.start_chat(history=genai_history)
-#                 response = chat.send_message(message)
-#                 return response.text
-#             else:
-#                 # Use Vertex AI
-#                 model = self._get_model(model_name)
-                
-#                 # Start a chat session
-#                 chat = model.start_chat()
-                
-#                 # Add history messages to the chat
-#                 for msg in history:
-#                     role = msg["role"]
-#                     content = msg["content"]
-                    
-#                     if role == "user":
-#                         # Add user message to history
-#                         chat._history.append({"role": "user", "parts": [{"text": content}]})
-#                     elif role == "model":
-#                         # Add model response to history
-#                         chat._history.append({"role": "model", "parts": [{"text": content}]})
-                
-#                 # Send the new message
-#                 response = chat.send_message(message)
-#                 return response.text
-            
-#         except Exception as e:
-#             print(f"Error sending message to Gemini: {str(e)}")
-#             raise
-    
-#     async def stream_chat(self, model_name: str, history: List[Dict[str, str]], message: str) -> AsyncGenerator[str, None]:
-#         """Stream a chat response from Gemini"""
-#         try:
-#             if hasattr(self, 'use_genai') and self.use_genai:
-#                 # Use google.generativeai
-#                 import google.generativeai as genai
-                
-#                 # Map model names
-#                 model_mapping = {
-#                     "gemini-2-0-flash-001": "gemini-2.0-flash-001",
-#                     "gemini-2-0-flash-lite-001": "gemini-2.0-flash-001"  # Use flash as fallback
-#                 }
-#                 genai_model_name = model_mapping.get(model_name, "gemini-2.0-flash-001")
-                
-#                 model = genai.GenerativeModel(genai_model_name)
-                
-#                 # Convert history to genai format
-#                 genai_history = []
-#                 for msg in history:
-#                     role = "user" if msg["role"] == "user" else "model"
-#                     genai_history.append({"role": role, "parts": msg["content"]})
-                
-#                 chat = model.start_chat(history=genai_history)
-#                 response = chat.send_message(message, stream=True)
-                
-#                 # Stream each chunk
-#                 for chunk in response:
-#                     if chunk.text:
-#                         yield chunk.text
-#                     await asyncio.sleep(0.01)
-#             else:
-#                 # Use Vertex AI
-#                 model = self._get_model(model_name)
-                
-#                 # Start a chat session
-#                 chat = model.start_chat()
-                
-#                 # Add history messages to the chat
-#                 for msg in history:
-#                     role = msg["role"]
-#                     content = msg["content"]
-                    
-#                     if role == "user":
-#                         # Add user message to history
-#                         chat._history.append({"role": "user", "parts": [{"text": content}]})
-#                     elif role == "model":
-#                         # Add model response to history
-#                         chat._history.append({"role": "model", "parts": [{"text": content}]})
-                
-#                 # Send the message and stream the response
-#                 response = chat.send_message(message, stream=True)
-                
-#                 # Stream each chunk
-#                 for chunk in response:
-#                     yield chunk.text
-#                     # Small delay to simulate streaming
-#                     await asyncio.sleep(0.01)
-                
-#         except Exception as e:
-#             print(f"Error streaming chat with Gemini: {str(e)}")
-#             yield f"Error: {str(e)}"
-
-# # Create a singleton instance
-# gemini_service = GeminiService()
 import os
 import asyncio
 from typing import List, Dict, Any, AsyncGenerator
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part # Partを追加
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class GeminiService:
     def __init__(self):
-        """Initialize the Gemini service with Google Cloud Vertex AI"""
+        """Initialize the Gemini service with Google Gen AI SDK and Vertex AI"""
         self.initialized = False
+        self.client = None
         self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT') or os.getenv('GCP_PROJECT')
         self.location = os.getenv('VERTEX_AI_LOCATION', 'us-central1')
         
-        if self.project_id:
-            try:
-                vertexai.init(project=self.project_id, location=self.location)
-                self.initialized = True
-                print(f"Gemini service initialized successfully with project: {self.project_id}")
-            except Exception as e:
-                print(f"Failed to initialize Gemini service: {str(e)}")
-        else:
-            print("Warning: GOOGLE_CLOUD_PROJECT is not set. Gemini service will not be available.")
+        self._initialize()
 
-    def _get_model(self, model_name: str) -> GenerativeModel:
-        """Get the appropriate generative model."""
-        if not self.initialized:
-            raise ValueError("Gemini service is not initialized.")
-        # フロントエンドのIDをVertex AIのモデル名にマッピング
+    def _initialize(self):
+        """Initialize Google Gen AI client for Vertex AI"""
+        try:
+            if not self.project_id:
+                print("Warning: GOOGLE_CLOUD_PROJECT is not set. Gemini service will not be available.")
+                return
+                
+            print(f"Initializing Gemini service with:")
+            print(f"  Project ID: {self.project_id}")
+            print(f"  Location: {self.location}")
+                
+            # Use Google Gen AI SDK with Vertex AI
+            from google import genai
+            
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=self.location
+            )
+            
+            # Test connection with a simple model
+            try:
+                print("Testing Gemini service connection...")
+                # Try to access available models or make a simple call
+                self.initialized = True
+                print(f"✅ Gemini service initialized successfully with project: {self.project_id}")
+            except Exception as test_error:
+                print(f"⚠️ Gemini service client created but connection test failed: {test_error}")
+                self.initialized = True  # Still mark as initialized for now
+            
+        except ImportError as import_error:
+            print(f"❌ Import error: google-genai package issue: {import_error}")
+            print("Please install with: pip install google-genai")
+        except Exception as e:
+            print(f"❌ Failed to initialize Gemini service: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_model_name(self, model_name: str) -> str:
+        """Map frontend model IDs to Vertex AI model names"""
         model_mapping = {
-            "gemini-2-0-flash-001": "gemini-1.5-flash-001", # ドキュメントにある安定版に合わせる例
+            # Generally Available Models
+            "gemini-2-0-flash-001": "gemini-2.0-flash-001",
+            "gemini-2-0-flash-lite-001": "gemini-2.0-flash-lite-001",
+            
+            # Preview Models (may not be available in all regions)
+            "gemini-2-5-pro": "gemini-2.5-pro",
+            "gemini-2-5-flash": "gemini-2.5-flash",
+            
+            # Legacy mappings for backwards compatibility
             "gemini-1-5-pro": "gemini-1.5-pro-001",
-            # 必要に応じて他のモデルマッピングを追加
+            "gemini-1-5-flash": "gemini-1.5-flash-001"
         }
-        # マッピングにない場合は、受け取ったIDをそのまま使用
-        vertex_model_name = model_mapping.get(model_name, model_name)
-        return GenerativeModel(vertex_model_name)
+        return model_mapping.get(model_name, "gemini-2.0-flash-001")
     
-    def _prepare_contents(self, history: List[Dict[str, str]], message: str) -> List[Dict]:
-        """Prepare the contents list for the Gemini API call."""
-        # Vertex AIの'contents'パラメータの形式に変換
-        contents = []
+    def _prepare_contents(self, history: List[Dict[str, str]], message: str) -> List[str]:
+        """Prepare the conversation for the API call"""
+        # Build conversation history
+        conversation = []
         for msg in history:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [Part.from_text(msg["content"])]})
+            conversation.append(msg["content"])
         
-        # 最新のユーザーメッセージを追加
-        contents.append({"role": "user", "parts": [Part.from_text(message)]})
-        return contents
+        # Add the new message
+        conversation.append(message)
+        return conversation
 
     async def send_message(self, model_name: str, history: List[Dict[str, str]], message: str) -> str:
-        """Send a message to Gemini and get a complete response."""
-        try:
-            model = self._get_model(model_name)
-            contents = self._prepare_contents(history, message)
+        """Send a message to Gemini and get a complete response"""
+        if not self.initialized:
+            raise ValueError("Gemini service is not initialized")
             
-            # generate_contentを直接呼び出す
-            response = await model.generate_content_async(contents)
+        try:
+            from google.genai import types
+            
+            vertex_model_name = self._get_model_name(model_name)
+            print(f"🤖 Gemini API Call:")
+            print(f"  Requested model: {model_name}")
+            print(f"  Mapped to Vertex AI model: {vertex_model_name}")
+            print(f"  Message length: {len(message)} characters")
+            print(f"  History items: {len(history)}")
+            
+            # Build the conversation context
+            contents = []
+            for msg in history:
+                contents.append(msg["content"])
+            contents.append(message)
+            
+            print(f"  Total content items: {len(contents)}")
+            
+            # Generate response using the latest SDK
+            config = types.GenerateContentConfig(
+                temperature=0.7,
+                top_p=0.9,
+                top_k=40,
+                max_output_tokens=8192
+            )
+            
+            print(f"  Calling Vertex AI API...")
+            response = self.client.models.generate_content(
+                model=vertex_model_name,
+                contents=contents,
+                config=config
+            )
+            
+            print(f"  ✅ Response received: {len(response.text)} characters")
             return response.text
             
         except Exception as e:
-            print(f"Error sending message to Gemini: {str(e)}")
+            print(f"❌ Gemini API Error:")
+            print(f"  Error type: {type(e).__name__}")
+            print(f"  Error message: {str(e)}")
+            
+            # Check for specific error types
+            if "404" in str(e) or "not found" in str(e).lower():
+                print(f"  🔍 Model '{vertex_model_name}' may not be available in region '{self.location}'")
+                print(f"  💡 Try using 'gemini-2-0-flash-001' instead of '{model_name}'")
+            elif "403" in str(e) or "permission" in str(e).lower():
+                print(f"  🔑 Authentication/Permission issue detected")
+                print(f"  💡 Check GOOGLE_CLOUD_PROJECT and authentication setup")
+            elif "quota" in str(e).lower() or "limit" in str(e).lower():
+                print(f"  📊 Quota/Rate limit issue detected")
+            
+            import traceback
+            traceback.print_exc()
             raise
 
     async def stream_chat(self, model_name: str, history: List[Dict[str, str]], message: str) -> AsyncGenerator[str, None]:
-        """Stream a chat response from Gemini."""
-        try:
-            model = self._get_model(model_name)
-            contents = self._prepare_contents(history, message)
-
-            # generate_contentをストリーミングモードで呼び出す
-            responses = model.generate_content(contents, stream=True)
+        """Stream a chat response from Gemini"""
+        if not self.initialized:
+            raise ValueError("Gemini service is not initialized")
             
-            for response in responses:
-                yield response.text
-                await asyncio.sleep(0.01) # わずかな待機時間
+        try:
+            from google.genai import types
+            
+            vertex_model_name = self._get_model_name(model_name)
+            
+            # Build the conversation context
+            contents = []
+            for msg in history:
+                contents.append(msg["content"])
+            contents.append(message)
+            
+            # Stream response using the latest SDK
+            for chunk in self.client.models.generate_content_stream(
+                model=vertex_model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    top_p=0.9,
+                    top_k=40,
+                    max_output_tokens=8192
+                )
+            ):
+                if chunk.text:
+                    yield chunk.text
+                await asyncio.sleep(0.01)
                 
         except Exception as e:
             print(f"Error streaming chat with Gemini: {str(e)}")

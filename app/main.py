@@ -1,6 +1,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.chat import router as chat_router
 from app.api.routes.models import router as models_router
+from app.api.routes.sessions import router as sessions_router
 from app.api.websockets.chat import router as ws_chat_router
 from app.core.config import settings
 from fastapi import FastAPI, Request, status
@@ -9,6 +10,13 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.services.openai_service import openai_service
 from app.services.gemini_service import gemini_service
+
+# Firebase サービスをインポート（利用可能な場合）
+try:
+    from app.services.firebase_service import firebase_service
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
 
 app = FastAPI(title="ChatLLM API", debug=True)
 
@@ -34,18 +42,29 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # ルーターの登録
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(models_router, prefix="/api/models", tags=["models"])
+app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
 
 # WebSocketの登録
 app.include_router(ws_chat_router)
 
 @app.get("/health")
 async def health_check():
+    services_status = {
+        "openai": openai_service.initialized,
+        "gemini": hasattr(gemini_service, 'initialized') and gemini_service.initialized,
+    }
+    
+    # Firebase状況を追加
+    if FIREBASE_AVAILABLE:
+        services_status["firebase"] = firebase_service.is_available()
+        services_status["session_storage"] = "firestore" if firebase_service.is_available() else "local_file"
+    else:
+        services_status["firebase"] = False
+        services_status["session_storage"] = "local_file"
+    
     return {
         "status": "healthy",
-        "services": {
-            "openai": openai_service.initialized,
-            "gemini": hasattr(gemini_service, 'initialized') and gemini_service.initialized
-        }
+        "services": services_status
     }
 
 @app.exception_handler(RequestValidationError)
