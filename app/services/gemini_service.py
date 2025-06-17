@@ -11,6 +11,7 @@ class GeminiService:
         """Initialize the Gemini service with Google Gen AI SDK and Vertex AI"""
         self.initialized = False
         self.client = None
+        self.global_client = None  # For models that require global endpoint
         self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT') or os.getenv('GCP_PROJECT')
         self.location = os.getenv('VERTEX_AI_LOCATION', 'us-central1')
         
@@ -30,10 +31,18 @@ class GeminiService:
             # Use Google Gen AI SDK with Vertex AI
             from google import genai
             
+            # Regional client for most models
             self.client = genai.Client(
                 vertexai=True,
                 project=self.project_id,
                 location=self.location
+            )
+            
+            # Global client for models that require global endpoint (like Gemini 2.5 Pro)
+            self.global_client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location='global'
             )
             
             # Test connection with a simple model
@@ -59,17 +68,24 @@ class GeminiService:
         model_mapping = {
             # Generally Available Models
             "gemini-2-0-flash-001": "gemini-2.0-flash-001",
-            "gemini-2-0-flash-lite-001": "gemini-2.0-flash-lite-001",
+            "gemini-2-0-flash-lite-001": "gemini-2.0-flash-lite",
             
-            # Preview Models (may not be available in all regions)
-            "gemini-2-5-pro": "gemini-2.5-pro",
-            "gemini-2-5-flash": "gemini-2.5-flash",
+            # Preview Models
+            "gemini-2-5-pro": "gemini-2.5-pro-preview-06-05",  # Requires global endpoint
+            "gemini-2-5-flash": "gemini-2.5-flash-preview-05-20",
             
             # Legacy mappings for backwards compatibility
             "gemini-1-5-pro": "gemini-1.5-pro-001",
             "gemini-1-5-flash": "gemini-1.5-flash-001"
         }
         return model_mapping.get(model_name, "gemini-2.0-flash-001")
+    
+    def _requires_global_endpoint(self, model_name: str) -> bool:
+        """Check if a model requires the global endpoint"""
+        global_models = {
+            "gemini-2-5-pro"  # Gemini 2.5 Pro is only available on global endpoint
+        }
+        return model_name in global_models
     
     def _prepare_contents(self, history: List[Dict[str, str]], message: str) -> List[str]:
         """Prepare the conversation for the API call"""
@@ -91,9 +107,14 @@ class GeminiService:
             from google.genai import types
             
             vertex_model_name = self._get_model_name(model_name)
+            use_global = self._requires_global_endpoint(model_name)
+            client_to_use = self.global_client if use_global else self.client
+            endpoint_type = "global" if use_global else "regional"
+            
             print(f"🤖 Gemini API Call:")
             print(f"  Requested model: {model_name}")
             print(f"  Mapped to Vertex AI model: {vertex_model_name}")
+            print(f"  Using {endpoint_type} endpoint")
             print(f"  Message length: {len(message)} characters")
             print(f"  History items: {len(history)}")
             
@@ -114,7 +135,7 @@ class GeminiService:
             )
             
             print(f"  Calling Vertex AI API...")
-            response = self.client.models.generate_content(
+            response = client_to_use.models.generate_content(
                 model=vertex_model_name,
                 contents=contents,
                 config=config
@@ -131,12 +152,23 @@ class GeminiService:
             # Check for specific error types
             if "404" in str(e) or "not found" in str(e).lower():
                 print(f"  🔍 Model '{vertex_model_name}' may not be available in region '{self.location}'")
-                print(f"  💡 Try using 'gemini-2-0-flash-001' instead of '{model_name}'")
+                print(f"  💡 Try using 'gemini-2-0-flash-lite-001' instead of '{model_name}'")
             elif "403" in str(e) or "permission" in str(e).lower():
                 print(f"  🔑 Authentication/Permission issue detected")
                 print(f"  💡 Check GOOGLE_CLOUD_PROJECT and authentication setup")
             elif "quota" in str(e).lower() or "limit" in str(e).lower():
                 print(f"  📊 Quota/Rate limit issue detected")
+            elif "Network is unreachable" in str(e) or "ConnectError" in str(e):
+                print(f"  🌐 Network connectivity issue detected")
+                print(f"  💡 Attempting fallback to working model...")
+                
+                # Try fallback to working model
+                if model_name != "gemini-2-0-flash-lite-001":
+                    try:
+                        print(f"  🔄 Retrying with gemini-2-0-flash-lite-001...")
+                        return await self.send_message("gemini-2-0-flash-lite-001", history, message)
+                    except Exception as fallback_error:
+                        print(f"  ❌ Fallback also failed: {fallback_error}")
             
             import traceback
             traceback.print_exc()
@@ -151,6 +183,8 @@ class GeminiService:
             from google.genai import types
             
             vertex_model_name = self._get_model_name(model_name)
+            use_global = self._requires_global_endpoint(model_name)
+            client_to_use = self.global_client if use_global else self.client
             
             # Build the conversation context
             contents = []
@@ -159,7 +193,7 @@ class GeminiService:
             contents.append(message)
             
             # Stream response using the latest SDK
-            for chunk in self.client.models.generate_content_stream(
+            for chunk in client_to_use.models.generate_content_stream(
                 model=vertex_model_name,
                 contents=contents,
                 config=types.GenerateContentConfig(

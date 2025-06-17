@@ -75,18 +75,27 @@ async def send_chat_message(
                 response_text = f"[ERROR] Gemini service is not available. Please check Google Cloud configuration."
         
         # OpenAI models
-        elif request.model.provider.lower() == "openai" and openai_service and openai_service.initialized:
-            print(f"Using OpenAI model: {request.model.id}")
-            response_text = await openai_service.send_message(
-                model_name=request.model.id,
-                history=history,
-                message=request.message
-            )
+        elif request.model.provider.lower() == "openai":
+            if openai_service and openai_service.initialized:
+                print(f"Using OpenAI model: {request.model.id}")
+                response_text = await openai_service.send_message(
+                    model_name=request.model.id,
+                    history=history,
+                    message=request.message
+                )
+            else:
+                print("OpenAI service not available or not initialized")
+                response_text = f"[ERROR] OpenAI service is not available. Please check OPENAI_API_KEY configuration."
         
-        # Fallback for other providers or when service is not initialized
+        # Anthropic models
+        elif request.model.provider.lower() == "anthropic":
+            print("Anthropic service not yet implemented")
+            response_text = f"[ERROR] Anthropic service is not yet implemented. Please use Google or OpenAI models."
+        
+        # Fallback for unknown providers
         else:
-            print(f"Using fallback for provider: {request.model.provider}")
-            response_text = f"[{request.model.provider} {request.model.id}] This is a dummy response. Actual implementation needed for {request.model.provider} models."
+            print(f"Unknown provider: {request.model.provider}")
+            response_text = f"[ERROR] Unknown provider '{request.model.provider}'. Please use Google, OpenAI, or Anthropic models."
         
         # セッションにメッセージを保存（ユーザーがログインしている場合のみ）
         if user_id and request.session_id:

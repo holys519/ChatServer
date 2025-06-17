@@ -49,8 +49,8 @@ def read_and_save_files(folder_path, output_file, extensions=None):
 # 使用例
 if __name__ == "__main__":
     # WSL環境でのパス
-    folder_to_read = "/mnt/c/Users/0025110396/study/chat_pj/ChatServer/scripts"  # 読み込むフォルダのパス
-    output_txt_file = "scripts_output_files.txt"  # 出力ファイル名
+    folder_to_read = "/mnt/c/Users/0025110396/study/chat_pj/ChatServer/app"  # 読み込むフォルダのパス
+    output_txt_file = "app_output_files.txt"  # 出力ファイル名
     
     # 処理したい拡張子を指定（小文字で）
     extensions_to_process = ['.ts', '.tsx', '.js', '.jsx', '.py', '.txt', '.sh']

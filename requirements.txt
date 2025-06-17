@@ -80,3 +80,25 @@ uvicorn==0.34.3
 uvloop==0.21.0
 watchfiles==1.0.5
 websockets==15.0.1
+
+# LangChain/LangGraph dependencies for CRA-Copilot
+langchain==0.3.15
+langchain-core==0.3.41
+langchain-google-vertexai==2.1.8
+langchain-community==0.3.15
+langgraph==0.2.58
+langsmith==0.2.10
+
+# Additional tools for research agents
+pubmed-parser==0.4.2
+xmltodict==0.14.2
+beautifulsoup4==4.12.3
+aiohttp==3.11.19
+Pillow==11.1.0
+
+# Data processing
+pandas==2.2.3
+numpy==2.2.6
+
+# Async utilities
+asyncio-mqtt==0.14.3

@@ -134,3 +134,73 @@ class ChatSessionResponse(BaseModel):
 
 class ChatSessionListResponse(BaseModel):
     sessions: List[ChatSessionResponse]
+
+# CRA-Copilot タスク管理用スキーマ
+from enum import Enum
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class TaskType(str, Enum):
+    SIMPLE_CHAT = "simple_chat"
+    PAPER_SCOUT = "paper_scout"
+    REVIEW_CREATION = "review_creation"
+    CUSTOM_AGENT = "custom_agent"
+
+class TaskRequest(BaseModel):
+    task_type: TaskType
+    session_id: Optional[str] = None
+    input_data: Dict[str, Any]
+    config: Optional[Dict[str, Any]] = {}
+
+class TaskResponse(BaseModel):
+    task_id: str
+    status: TaskStatus
+    message: str
+    result: Optional[Dict[str, Any]] = None
+
+class TaskProgress(BaseModel):
+    task_id: str
+    user_id: str
+    session_id: Optional[str] = None
+    task_type: TaskType
+    status: TaskStatus
+    progress_percentage: float = 0.0
+    current_step: Optional[str] = None
+    steps_completed: int = 0
+    total_steps: int = 1
+    input_data: Dict[str, Any]
+    output_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+
+class AgentStep(BaseModel):
+    step_id: str
+    task_id: str
+    agent_name: str
+    action: str
+    input_data: Dict[str, Any]
+    output_data: Optional[Dict[str, Any]] = None
+    status: TaskStatus
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+
+class PaperScoutRequest(BaseModel):
+    query: str
+    max_results: int = 10
+    years_back: int = 5
+    include_abstracts: bool = True
+
+class ReviewCreationRequest(BaseModel):
+    topic: str
+    paper_ids: List[str] = []
+    review_type: Literal["systematic", "narrative", "meta_analysis"] = "narrative"
+    target_audience: Literal["academic", "clinical", "general"] = "academic"
+    length: Literal["short", "medium", "long"] = "medium"

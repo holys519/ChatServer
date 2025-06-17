@@ -65,6 +65,10 @@ class FirebaseService:
     def get_db(self) -> Optional[Client]:
         """Firestore クライアントを取得"""
         return self.db
+    
+    def get_firestore_client(self) -> Optional[Client]:
+        """Firestore クライアントを取得 (alias for get_db)"""
+        return self.get_db()
 
     def is_available(self) -> bool:
         """Firebase サービスが利用可能かどうかを確認"""
