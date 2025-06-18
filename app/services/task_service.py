@@ -127,6 +127,7 @@ class TaskService:
         progress_percentage: Optional[float] = None,
         current_step: Optional[str] = None,
         steps_completed: Optional[int] = None,
+        total_steps: Optional[int] = None,
         output_data: Optional[Dict[str, Any]] = None,
         error_message: Optional[str] = None
     ) -> bool:
@@ -149,6 +150,9 @@ class TaskService:
             
             if steps_completed is not None:
                 update_data['steps_completed'] = steps_completed
+            
+            if total_steps is not None:
+                update_data['total_steps'] = total_steps
             
             if output_data:
                 update_data['output_data'] = output_data
