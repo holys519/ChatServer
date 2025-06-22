@@ -8,17 +8,18 @@ from datetime import datetime
 import json
 
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import ToolExecutor
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.agent_base import BaseAgent
 from app.services.pubmed_service import pubmed_service, PubMedPaper
+from app.services.translation_service import translation_service
 from app.models.schemas import TaskStatus
 
 class ReviewState(TypedDict):
     """State for the review creation workflow"""
     topic: str
+    original_topic: str
     review_type: str
     target_audience: str
     length: str
@@ -30,6 +31,7 @@ class ReviewState(TypedDict):
     final_review: str
     current_step: str
     progress: float
+    original_language: str
     messages: Annotated[List[BaseMessage], "The messages in the conversation"]
 
 class ReviewCreationAgent(BaseAgent):
@@ -70,6 +72,7 @@ Your role is to orchestrate these agents to produce high-quality literature revi
         workflow = StateGraph(ReviewState)
         
         # Add nodes (agents/steps)
+        workflow.add_node("translation_analyzer", self._translation_analyzer_node)
         workflow.add_node("search_strategist", self._search_strategist_node)
         workflow.add_node("paper_collector", self._paper_collector_node)
         workflow.add_node("paper_analyst", self._paper_analyst_node)
@@ -79,8 +82,9 @@ Your role is to orchestrate these agents to produce high-quality literature revi
         workflow.add_node("finalizer", self._finalizer_node)
         
         # Define the workflow edges
-        workflow.set_entry_point("search_strategist")
+        workflow.set_entry_point("translation_analyzer")
         
+        workflow.add_edge("translation_analyzer", "search_strategist")
         workflow.add_edge("search_strategist", "paper_collector")
         workflow.add_edge("paper_collector", "paper_analyst")
         workflow.add_edge("paper_analyst", "structure_architect")
@@ -100,8 +104,10 @@ Your role is to orchestrate these agents to produce high-quality literature revi
         """Execute the review creation workflow"""
         try:
             # Initialize state
+            original_topic = input_data.get('topic', '')
             initial_state: ReviewState = {
-                "topic": input_data.get('topic', ''),
+                "topic": original_topic,
+                "original_topic": original_topic,
                 "review_type": input_data.get('review_type', 'narrative'),
                 "target_audience": input_data.get('target_audience', 'academic'),
                 "length": input_data.get('length', 'medium'),
@@ -113,7 +119,8 @@ Your role is to orchestrate these agents to produce high-quality literature revi
                 "final_review": "",
                 "current_step": "initializing",
                 "progress": 0.0,
-                "messages": [HumanMessage(content=f"Create a {input_data.get('review_type', 'narrative')} literature review on: {input_data.get('topic', '')}")]
+                "original_language": "en",
+                "messages": [HumanMessage(content=f"Create a {input_data.get('review_type', 'narrative')} literature review on: {original_topic}")]
             }
             
             # Store task_id for progress updates
@@ -146,6 +153,32 @@ Your role is to orchestrate these agents to produce high-quality literature revi
         except Exception as e:
             print(f"❌ Review Creation Agent execution error: {str(e)}")
             raise Exception(f"Review Creation Agent execution failed: {str(e)}")
+    
+    async def _translation_analyzer_node(self, state: ReviewState) -> ReviewState:
+        """Translation Analyzer: Handle language detection and translation"""
+        try:
+            await self.update_task_progress(self._current_task_id, 10.0, "Analyzing language and translating if needed")
+            
+            original_topic = state["original_topic"]
+            
+            # Detect language and translate if needed
+            translation_result = await translation_service.translate_search_query(original_topic)
+            
+            # Update state with translation information
+            state["topic"] = translation_result["translated"]  # Use English version for search
+            state["original_language"] = translation_result["original_language"]
+            state["current_step"] = "translation_complete"
+            state["progress"] = 10.0
+            
+            return state
+            
+        except Exception as e:
+            print(f"❌ Translation Analyzer error: {str(e)}")
+            # Continue with original topic if translation fails
+            state["topic"] = state["original_topic"]
+            state["original_language"] = "en"
+            state["current_step"] = "translation_error"
+            return state
     
     async def _search_strategist_node(self, state: ReviewState) -> ReviewState:
         """Search Strategist Agent: Develops comprehensive search strategy"""
@@ -202,15 +235,29 @@ Format as a structured strategy that other agents can follow.
             # Use search strategy to find papers
             search_strategy = state["search_strategy"]
             
-            # Primary search
+            # Primary search with enhanced query optimization
             primary_query = f"{state['topic']} {' '.join(search_strategy.get('primary_keywords', []))}"
             
+            # Optimize query for better results
+            optimized_query = await self._optimize_review_search_query(
+                primary_query, 
+                state['topic'], 
+                state['review_type']
+            )
+            
             papers = await pubmed_service.search_papers(
-                query=primary_query,
+                query=optimized_query,
                 max_results=search_strategy.get('max_papers', 30),
                 years_back=5,
                 include_abstracts=True
             )
+            
+            # Apply relevance scoring and filtering
+            if papers:
+                scored_papers = await self._score_papers_for_review(papers, state['topic'], state['review_type'])
+                # Sort by relevance and take top papers
+                scored_papers.sort(key=lambda x: x['relevance_score'], reverse=True)
+                papers = [p['paper'] for p in scored_papers]
             
             # Convert to dict format
             papers_data = []
@@ -378,6 +425,9 @@ Provide specific section titles, main points, and the logical flow.
             section_names = outline.get("sections", ["Introduction", "Literature Review", "Discussion", "Conclusion"])
             
             for i, section_name in enumerate(section_names):
+                # Prepare paper citations for this section
+                paper_citations = self._prepare_paper_citations_for_content(state['papers'])
+                
                 section_prompt = f"""
 As the Content Writer, write the "{section_name}" section for a {state['review_type']} literature review on "{state['topic']}".
 
@@ -388,11 +438,17 @@ Context:
 
 Available analysis: {analysis.get('analysis_text', '')[:1000]}...
 
+Referenced Papers (use these with [number] citations):
+{paper_citations}
+
 Section requirements:
 - Academic writing style appropriate for {state['target_audience']}
-- Proper integration of research findings
+- Proper integration of research findings with citations (use [1], [2], etc.)
 - Critical analysis, not just summary
 - Logical flow and clear arguments
+- Include relevant citations to support your statements
+
+IMPORTANT: When referencing any research findings, studies, or claims, include the appropriate citation number in square brackets [1], [2], etc., referring to the papers listed above.
 
 Write a comprehensive {section_name.lower()} section (aim for {self._get_section_length(state['length'], section_name)} words).
 """
@@ -425,6 +481,10 @@ Write a comprehensive {section_name.lower()} section (aim for {self._get_section
             full_review = ""
             for section_name, content in state["sections"].items():
                 full_review += f"\n\n## {section_name}\n\n{content}"
+            
+            # Add References section with collected papers
+            references_section = self._generate_references_section(state["papers"])
+            full_review += f"\n\n## References\n\n{references_section}"
             
             quality_prompt = f"""
 As the Quality Reviewer, review this {state['review_type']} literature review on "{state['topic']}" and provide improvements.
@@ -460,10 +520,18 @@ Provide an improved version that maintains the content but enhances quality, flo
     async def _finalizer_node(self, state: ReviewState) -> ReviewState:
         """Finalizer Agent: Adds final touches and metadata"""
         try:
-            await self.update_task_progress(self._current_task_id, 100.0, "Finalizing review")
+            await self.update_task_progress(self._current_task_id, 95.0, "Finalizing review")
+            
+            # Translate final review back to original language if needed
+            final_content = state['final_review']
+            topic_display = state['original_topic']  # Use original topic for display
+            
+            if state['original_language'] == 'ja':
+                await self.update_task_progress(self._current_task_id, 97.0, "Translating review to Japanese")
+                final_content = await translation_service.translate_results(final_content, 'ja')
             
             # Add metadata and final formatting
-            final_review = f"""# Literature Review: {state['topic']}
+            final_review = f"""# Literature Review: {topic_display}
 
 **Review Type**: {state['review_type'].title()}
 **Target Audience**: {state['target_audience'].title()}
@@ -472,7 +540,7 @@ Provide an improved version that maintains the content but enhances quality, flo
 
 ---
 
-{state['final_review']}
+{final_content}
 
 ---
 
@@ -540,6 +608,308 @@ Provide an improved version that maintains the content but enhances quality, flo
             return int(base * 1.3)
         return base
     
+    async def _optimize_review_search_query(self, query: str, topic: str, review_type: str) -> str:
+        """Optimize search query specifically for literature reviews"""
+        try:
+            optimization_prompt = f"""
+Optimize this search query for a comprehensive literature review on "{topic}":
+
+Original query: "{query}"
+Review type: {review_type}
+
+Create a sophisticated PubMed search strategy that:
+1. Uses Medical Subject Headings (MeSH) terms appropriately
+2. Includes Boolean operators for comprehensive coverage
+3. Considers different study types relevant for reviews
+4. Uses field tags for precision ([ti], [ab], [kw])
+5. Includes synonyms and alternative terminology
+6. Balances sensitivity (finding all relevant papers) vs specificity
+
+For literature reviews, we want comprehensive coverage, so err on the side of sensitivity.
+Return only the optimized query.
+"""
+            
+            messages = [HumanMessage(content=optimization_prompt)]
+            response = await self.invoke_llm(messages)
+            
+            optimized = response.strip().strip('"').strip("'")
+            return optimized if optimized and len(optimized) > 3 else query
+            
+        except Exception as e:
+            print(f"❌ Review query optimization error: {str(e)}")
+            return query
+    
+    async def _score_papers_for_review(self, papers: List, topic: str, review_type: str) -> List[Dict[str, Any]]:
+        """Score papers specifically for literature review relevance"""
+        try:
+            # Extract topic keywords for comparison
+            topic_keywords = await self._extract_topic_keywords(topic, review_type)
+            
+            scored_papers = []
+            for paper in papers:
+                # Calculate relevance scores
+                title_relevance = self._calculate_text_relevance(topic_keywords, paper.title)
+                abstract_relevance = self._calculate_text_relevance(topic_keywords, paper.abstract)
+                keyword_relevance = self._calculate_keyword_relevance(topic_keywords, paper.keywords)
+                
+                # Review-specific factors
+                study_type_score = self._assess_study_type_for_review(paper.title, paper.abstract, review_type)
+                methodology_score = self._assess_methodology_quality(paper.abstract)
+                
+                # Combined score with review-specific weights
+                relevance_score = (
+                    title_relevance * 0.25 +
+                    abstract_relevance * 0.35 +
+                    keyword_relevance * 0.15 +
+                    study_type_score * 0.15 +
+                    methodology_score * 0.10
+                )
+                
+                scored_papers.append({
+                    'paper': paper,
+                    'relevance_score': relevance_score,
+                    'score_breakdown': {
+                        'title': title_relevance,
+                        'abstract': abstract_relevance,
+                        'keywords': keyword_relevance,
+                        'study_type': study_type_score,
+                        'methodology': methodology_score
+                    }
+                })
+            
+            return scored_papers
+            
+        except Exception as e:
+            print(f"❌ Error scoring papers for review: {str(e)}")
+            return [{'paper': paper, 'relevance_score': 0.5} for paper in papers]
+    
+    async def _extract_topic_keywords(self, topic: str, review_type: str) -> List[str]:
+        """Extract keywords specifically for literature review topic"""
+        try:
+            prompt = f"""
+Extract the most important keywords and concepts for finding papers relevant to this literature review:
+
+Topic: "{topic}"
+Review type: {review_type}
+
+Focus on:
+- Core research concepts
+- Methods and techniques  
+- Medical/scientific terminology
+- Alternative terms and synonyms
+- Related research areas
+
+Return a comma-separated list of keywords (no explanations).
+"""
+            
+            messages = [HumanMessage(content=prompt)]
+            response = await self.invoke_llm(messages)
+            
+            keywords = [kw.strip().lower() for kw in response.split(',') if kw.strip()]
+            return keywords[:25]  # More keywords for comprehensive reviews
+            
+        except Exception:
+            # Fallback keyword extraction
+            import re
+            words = re.findall(r'\b\w{3,}\b', topic.lower())
+            return list(set(words))[:15]
+    
+    def _calculate_text_relevance(self, keywords: List[str], text: str) -> float:
+        """Calculate text relevance for review purposes"""
+        if not keywords or not text:
+            return 0.0
+        
+        text_lower = text.lower()
+        total_score = 0.0
+        max_possible_score = 0.0
+        
+        for keyword in keywords:
+            keyword_weight = len(keyword.split())  # Multi-word phrases get more weight
+            max_possible_score += keyword_weight
+            
+            if keyword in text_lower:
+                # Exact match gets full score
+                total_score += keyword_weight
+            elif any(word in text_lower for word in keyword.split()):
+                # Partial match gets reduced score
+                total_score += keyword_weight * 0.5
+        
+        return total_score / max(max_possible_score, 1)
+    
+    def _calculate_keyword_relevance(self, topic_keywords: List[str], paper_keywords: List[str]) -> float:
+        """Calculate keyword overlap relevance"""
+        if not topic_keywords or not paper_keywords:
+            return 0.0
+        
+        topic_set = set([kw.lower() for kw in topic_keywords])
+        paper_set = set([kw.lower() for kw in paper_keywords])
+        
+        # Jaccard similarity
+        intersection = topic_set.intersection(paper_set)
+        union = topic_set.union(paper_set)
+        
+        return len(intersection) / len(union) if union else 0.0
+    
+    def _assess_study_type_for_review(self, title: str, abstract: str, review_type: str) -> float:
+        """Assess how well the study type fits the review needs"""
+        text = f"{title} {abstract}".lower()
+        
+        # Define study types preferred for different review types
+        if review_type == 'systematic':
+            preferred_types = ['randomized', 'controlled', 'trial', 'meta-analysis', 'systematic']
+            less_preferred = ['case report', 'editorial', 'commentary']
+        elif review_type == 'narrative':
+            preferred_types = ['review', 'survey', 'perspective', 'analysis']
+            less_preferred = ['case report']
+        else:  # general
+            preferred_types = ['study', 'research', 'analysis', 'investigation']
+            less_preferred = ['editorial', 'commentary']
+        
+        score = 0.5  # Base score
+        
+        for pref_type in preferred_types:
+            if pref_type in text:
+                score += 0.1
+        
+        for less_pref in less_preferred:
+            if less_pref in text:
+                score -= 0.2
+        
+        return max(0.0, min(1.0, score))
+    
+    def _assess_methodology_quality(self, abstract: str) -> float:
+        """Assess methodology quality indicators in abstract"""
+        if not abstract:
+            return 0.5
+        
+        abstract_lower = abstract.lower()
+        quality_indicators = [
+            'methodology', 'methods', 'statistical', 'analysis', 'data',
+            'participants', 'subjects', 'sample', 'protocol', 'design'
+        ]
+        
+        score = 0.3  # Base score
+        for indicator in quality_indicators:
+            if indicator in abstract_lower:
+                score += 0.1
+        
+        return min(1.0, score)
+    
+    def _generate_references_section(self, papers: List[Dict[str, Any]]) -> str:
+        """Generate a properly formatted References section"""
+        if not papers:
+            return "No references found."
+        
+        references = []
+        for i, paper in enumerate(papers, 1):
+            # Format each reference in academic style
+            reference = self._format_reference_citation(paper, i)
+            references.append(reference)
+        
+        # Join all references
+        references_text = "\n\n".join(references)
+        
+        return f"""The following {len(papers)} papers were identified and analyzed for this literature review:
+
+{references_text}"""
+    
+    def _format_reference_citation(self, paper: Dict[str, Any], ref_number: int) -> str:
+        """Format a single paper reference in academic citation style"""
+        try:
+            # Extract paper information
+            title = paper.get('title', 'Title not available')
+            authors = paper.get('authors', [])
+            journal = paper.get('journal', 'Journal not available')
+            pub_date = paper.get('publication_date', 'Date not available')
+            pmid = paper.get('pmid', '')
+            doi = paper.get('doi', '')
+            url = paper.get('url', '')
+            
+            # Format authors (limit to first 6, then et al.)
+            if authors:
+                if len(authors) <= 6:
+                    author_text = ", ".join(authors)
+                else:
+                    author_text = ", ".join(authors[:6]) + ", et al."
+            else:
+                author_text = "Authors not available"
+            
+            # Extract year from publication date
+            year = "Year not available"
+            if pub_date:
+                try:
+                    year = pub_date[:4] if len(pub_date) >= 4 else pub_date
+                except:
+                    year = str(pub_date)
+            
+            # Build citation in APA-like format
+            citation_parts = []
+            citation_parts.append(f"**[{ref_number}]** {author_text}")
+            citation_parts.append(f"({year})")
+            citation_parts.append(f"{title}")
+            citation_parts.append(f"*{journal}*")
+            
+            # Add identifiers if available
+            identifiers = []
+            if pmid:
+                identifiers.append(f"PMID: {pmid}")
+            if doi:
+                identifiers.append(f"DOI: {doi}")
+            if url and not doi:  # Only add URL if no DOI available
+                identifiers.append(f"URL: {url}")
+            
+            if identifiers:
+                citation_parts.append(f"({'; '.join(identifiers)})")
+            
+            citation = ". ".join(citation_parts)
+            
+            # Add abstract preview if available
+            abstract = paper.get('abstract', '')
+            if abstract:
+                # Truncate abstract to first 200 characters
+                abstract_preview = abstract[:200] + "..." if len(abstract) > 200 else abstract
+                citation += f"\n   *Abstract excerpt: {abstract_preview}*"
+            
+            return citation
+            
+        except Exception as e:
+            print(f"❌ Error formatting reference {ref_number}: {str(e)}")
+            return f"**[{ref_number}]** Reference formatting error for paper: {paper.get('title', 'Unknown title')}"
+    
+    def _prepare_paper_citations_for_content(self, papers: List[Dict[str, Any]]) -> str:
+        """Prepare a simplified list of papers for content writers to reference"""
+        if not papers:
+            return "No papers available for citation."
+        
+        citations = []
+        for i, paper in enumerate(papers, 1):
+            # Create a concise reference for content generation
+            title = paper.get('title', 'Unknown title')
+            authors = paper.get('authors', [])
+            year = self._extract_year_from_date(paper.get('publication_date', ''))
+            
+            # Format first author + year for easy reference
+            first_author = authors[0] if authors else "Unknown author"
+            if len(authors) > 1:
+                author_text = f"{first_author} et al."
+            else:
+                author_text = first_author
+            
+            # Create short citation for content writers
+            short_citation = f"[{i}] {author_text} ({year}): {title[:80]}{'...' if len(title) > 80 else ''}"
+            citations.append(short_citation)
+        
+        return "\n".join(citations)
+    
+    def _extract_year_from_date(self, date_str: str) -> str:
+        """Extract year from publication date string"""
+        if not date_str:
+            return "Unknown year"
+        try:
+            return date_str[:4] if len(date_str) >= 4 else str(date_str)
+        except:
+            return "Unknown year"
+
     def _assess_overall_quality(self, papers: List[Dict[str, Any]]) -> float:
         """Assess overall quality of paper collection"""
         if not papers:
