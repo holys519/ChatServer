@@ -1,0 +1,11 @@
+INFO:     Will watch for changes in these directories: ['/mnt/c/Users/0025110396/study/chat_pj/ChatServer']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [18237] using WatchFiles
+INFO:     Started server process [18239]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [18239]
+INFO:     Stopping reloader process [18237]

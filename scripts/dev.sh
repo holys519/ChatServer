@@ -41,13 +41,26 @@ fi
 echo "📦 Installing dependencies with uv..."
 uv sync
 
+# Check for port conflicts and use alternative port if needed
+PORT=${PORT:-8000}
+
+# Check if port is already in use
+if ss -tlnp | grep -q ":$PORT "; then
+    echo "⚠️  Port $PORT is already in use. Trying port 8001..."
+    PORT=8001
+    if ss -tlnp | grep -q ":$PORT "; then
+        echo "⚠️  Port $PORT is also in use. Trying port 8002..."
+        PORT=8002
+    fi
+fi
+
 # Start the development server
-echo "🌐 Starting FastAPI server on http://localhost:8000"
-echo "📖 API documentation will be available at http://localhost:8000/docs"
-echo "🔍 Health check endpoint: http://localhost:8000/health"
+echo "🌐 Starting FastAPI server on http://localhost:$PORT"
+echo "📖 API documentation will be available at http://localhost:$PORT/docs"
+echo "🔍 Health check endpoint: http://localhost:$PORT/health"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Run the server using uv
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port $PORT

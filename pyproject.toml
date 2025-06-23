@@ -15,6 +15,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "google-genai>=1.0.0",
     "google-cloud-aiplatform>=1.38.0",
+    "google-cloud-storage>=2.10.0",
+    "google-cloud-documentai>=2.20.0",
     "firebase-admin>=6.5.0",
     "openai>=1.3.0",
     "websockets>=12.0",
@@ -25,6 +27,8 @@ dependencies = [
     "langchain-google-vertexai>=2.0.25",
     "langchain-community>=0.3.25",
     "langgraph>=0.4.8",
+    "PyPDF2>=3.0.1",
+    "python-docx>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +40,18 @@ dev = [
     "isort>=5.12.0",
     "flake8>=6.1.0",
     "mypy>=1.6.0",
+]
+knowledge = [
+    "google-cloud-documentai>=2.20.1",
+    "google-cloud-storage>=2.10.0",
+    "PyPDF2>=3.0.1",
+    "python-docx>=0.8.11",
+]
+full = [
+    "google-cloud-documentai>=2.20.1",
+    "google-cloud-storage>=2.10.0",
+    "PyPDF2>=3.0.1",
+    "python-docx>=0.8.11",
 ]
 
 [build-system]
