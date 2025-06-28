@@ -266,6 +266,25 @@ class AgentOrchestrator:
             self.register_agent("review_creation", ReviewCreationAgent())
         except ImportError as e:
             print(f"⚠️ Could not import ReviewCreationAgent: {e}")
+        
+        # Register new enhanced agents
+        try:
+            from app.agents.paper_critic_agent import PaperCriticAgent
+            self.register_agent("paper_critic", PaperCriticAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperCriticAgent: {e}")
+        
+        try:
+            from app.agents.paper_reviser_agent import PaperReviserAgent
+            self.register_agent("paper_reviser", PaperReviserAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperReviserAgent: {e}")
+        
+        try:
+            from app.agents.paper_search_auditor import PaperSearchAuditor
+            self.register_agent("paper_search_auditor", PaperSearchAuditor())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperSearchAuditor: {e}")
     
     def register_agent(self, agent_id: str, agent: BaseAgent):
         """Register a new agent"""

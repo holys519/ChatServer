@@ -9,6 +9,9 @@ FastAPI backend for ChatLLM application with Google Gemini AI integration.
 - **Multiple Communication Protocols**: REST API, Server-Sent Events, WebSocket
 - **Type Safety**: Full TypeScript-compatible API schemas with Pydantic
 - **Environment Management**: Clean dependency management with `uv`
+- **🔬 Enhanced Research Agents**: Advanced multi-agent system for academic paper search and analysis
+- **🤖 Multi-Agent Architecture**: Sequential workflow with specialized agents for quality assurance
+- **📊 Research Quality Assurance**: Comprehensive validation, criticism, and enhancement of research results
 
 ## Requirements
 
@@ -59,6 +62,18 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/chat/send` - Send message and get complete response
 - `POST /api/chat/stream` - Send message and get streaming response (SSE)
 
+### Research Agent Commands (via Chat)
+
+- `@paper-scout-auditor <query>` - Enhanced paper search with multi-agent validation
+- `@paper-scout <query>` - Basic paper search and analysis
+- `@review-creation` - Literature review generation with selected papers
+
+### Task Management Endpoints
+
+- `POST /api/tasks/execute` - Execute background tasks with progress tracking
+- `GET /api/tasks/status/{task_id}` - Get task progress and status
+- `POST /api/tasks/stream/{task_id}` - Stream task progress in real-time
+
 ### Model Endpoints
 
 - `GET /api/models/` - Get list of available AI models
@@ -73,26 +88,40 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 ChatServer/
 ├── app/
+│   ├── agents/                          # 🤖 Multi-Agent System
+│   │   ├── paper_scout_agent.py         # Basic paper search and analysis
+│   │   ├── paper_critic_agent.py        # Paper validation and quality assessment
+│   │   ├── paper_reviser_agent.py       # Result enhancement and gap filling
+│   │   ├── paper_search_auditor.py      # Advanced multi-agent coordinator
+│   │   └── review_creation_agent.py     # Literature review generation
 │   ├── api/
 │   │   ├── routes/
-│   │   │   ├── chat.py          # Chat API endpoints
-│   │   │   └── models.py        # Model information endpoints
+│   │   │   ├── chat.py                  # Chat API with agent command integration
+│   │   │   ├── models.py                # Model information endpoints
+│   │   │   ├── tasks.py                 # Task management and progress tracking
+│   │   │   └── sessions.py              # Session management
 │   │   └── websockets/
-│   │       └── chat.py          # WebSocket handlers
+│   │       └── chat.py                  # WebSocket handlers
 │   ├── core/
-│   │   └── config.py           # Application configuration
+│   │   └── config.py                   # Application configuration
 │   ├── models/
-│   │   └── schemas.py          # Pydantic schemas
+│   │   └── schemas.py                  # Pydantic schemas for agents and tasks
 │   ├── services/
-│   │   └── gemini_service.py   # Google Gemini API integration
-│   └── main.py                 # FastAPI application entry point
+│   │   ├── agent_base.py               # 🏗️ Agent base class and orchestrator
+│   │   ├── gemini_service.py           # Google Gemini API integration
+│   │   ├── pubmed_service.py           # PubMed API integration for research
+│   │   ├── translation_service.py      # Multi-language support
+│   │   ├── task_service.py             # Background task execution
+│   │   ├── session_service.py          # Session persistence
+│   │   └── firebase_service.py         # Firebase integration
+│   └── main.py                         # FastAPI application entry point
 ├── scripts/
-│   ├── dev.sh                  # Development server script
-│   └── start.sh                # Production server script
-├── tests/                      # Test files
-├── .env.example               # Environment variables template
-├── pyproject.toml             # Project configuration and dependencies
-└── README.md                  # This file
+│   ├── dev.sh                          # Development server script
+│   └── start.sh                        # Production server script
+├── tests/                              # Test files including agent tests
+├── .env.example                        # Environment variables template
+├── pyproject.toml                      # Project configuration and dependencies
+└── README.md                          # This file
 ```
 
 ## Development
@@ -152,14 +181,70 @@ This backend is designed to work with the ChatLLMApp React Native frontend. The 
 - Supports real-time streaming for Google Gemini models
 - Provides seamless model switching
 
+## 🤖 Enhanced Research Agent System
+
+### Multi-Agent Architecture
+
+The ChatServer features an advanced multi-agent system designed for high-quality academic research:
+
+#### **PaperCriticAgent** - Research Validation & Quality Assessment
+- **Multi-dimensional Quality Scoring**: Relevance, quality, credibility, methodology, and impact assessment
+- **Statistical Validity Analysis**: Bias detection and methodology evaluation
+- **Citation Impact Analysis**: H-index and journal ranking verification
+- **Comprehensive Validation**: Structured scoring with detailed justifications
+
+#### **PaperReviserAgent** - Result Enhancement & Gap Filling
+- **Research Gap Analysis**: Systematic identification of missing research areas
+- **Quality Optimization**: Intelligent filtering and improvement strategies
+- **Diversity Enhancement**: Methodological, geographic, and temporal balancing
+- **Strategic Supplementation**: Targeted searches to fill identified gaps
+
+#### **PaperSearchAuditor** - Advanced Multi-Agent Coordinator
+- **Sequential Workflow**: Orchestrates critic and reviser agents for optimal results
+- **Comprehensive Quality Assurance**: End-to-end validation with confidence scoring
+- **Audit Trail**: Complete documentation of all agent actions and decisions
+- **Final Validation**: Risk assessment and reliability verification
+
+### Usage Examples
+
+#### Basic Research Query
+```
+@paper-scout-auditor machine learning in healthcare diagnosis
+```
+
+#### Advanced Research with Specific Focus
+```
+@paper-scout-auditor COVID-19 vaccine efficacy against variants
+```
+
+### Research Quality Metrics
+
+The system provides comprehensive quality assessment:
+- **Quality Grades**: A+ to D rating system
+- **Confidence Scores**: 0.0 to 1.0 reliability assessment
+- **Coverage Analysis**: Gap identification and mitigation
+- **Bias Detection**: Systematic bias identification and correction
+
+### Supported Research Features
+
+- **Multi-language Support**: Japanese and English query translation
+- **Advanced Query Optimization**: PubMed syntax enhancement with MeSH terms
+- **Temporal Analysis**: Publication date distribution and recency scoring
+- **Geographic Diversity**: International research perspective inclusion
+- **Methodology Balancing**: Systematic reviews, RCTs, observational studies
+
 ## Supported AI Models
 
+- **Google Gemini 2.0 Flash** - Latest multimodal model with advanced reasoning
+- **Google Gemini 2.0 Flash Lite** - Cost-optimized version
+- **Google Gemini 2.5 Pro** - Advanced reasoning capabilities (preview)
+- **Google Gemini 2.5 Flash** - Thinking model with enhanced analysis (preview)
 - **Google Gemini 1.5 Pro** - High-performance multimodal model
 - **Google Gemini 1.5 Flash** - Fast response optimized model
 - **OpenAI GPT-4o** - (Future implementation)
 - **Anthropic Claude** - (Future implementation)
 
-Currently, only Google Gemini models have full backend integration. Other models return structured dummy responses.
+Currently, Google Gemini models have full backend integration with research agents. Other models return structured dummy responses.
 
 ## License
 

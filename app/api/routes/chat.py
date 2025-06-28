@@ -8,6 +8,8 @@ from app.models.schemas import ChatRequest, ChatResponse, ChatHistoryItem, ChatM
 from app.services.gemini_service import gemini_service
 from app.services.openai_service import openai_service
 from app.services.session_service import session_service
+from app.services.agent_base import agent_orchestrator
+from app.services.task_service import task_service
 
 router = APIRouter()
 
@@ -51,8 +53,93 @@ async def send_chat_message(
         
         response_text = ""
         
+        # Check for special agent commands
+        if request.message.startswith("@paper-scout-auditor"):
+            # Handle paper search auditor command
+            try:
+                # Extract query from command
+                query = request.message.replace("@paper-scout-auditor", "").strip()
+                if not query:
+                    response_text = "Please provide a search query after @paper-scout-auditor"
+                else:
+                    # Create a task for the paper search auditor
+                    task_id = str(uuid.uuid4())
+                    
+                    # First run paper scout to get initial papers
+                    scout_input = {
+                        'query': query,
+                        'max_results': 15,
+                        'years_back': 10,
+                        'include_abstracts': True,
+                        'analysis_type': 'comprehensive'
+                    }
+                    
+                    try:
+                        # Execute paper scout first
+                        scout_result = await agent_orchestrator.execute_task(
+                            task_id=task_id,
+                            agent_id="paper_scout",
+                            input_data=scout_input
+                        )
+                        
+                        # Then run the auditor with scout results
+                        auditor_input = {
+                            'papers': scout_result.get('papers', []),
+                            'search_query': scout_result.get('optimized_query', query),
+                            'original_query': query,
+                            'audit_goals': ['quality', 'completeness', 'diversity']
+                        }
+                        
+                        auditor_result = await agent_orchestrator.execute_task(
+                            task_id=task_id + "_auditor",
+                            agent_id="paper_search_auditor",
+                            input_data=auditor_input
+                        )
+                        
+                        # Format response with audit results
+                        audit_report = auditor_result.get('audit_report', 'Audit completed')
+                        final_papers_count = len(auditor_result.get('final_papers', []))
+                        quality_grade = auditor_result.get('quality_metrics', {}).get('quality_metrics', {}).get('quality_grade', 'N/A')
+                        
+                        response_text = f"""# Enhanced Paper Search Audit Results
+
+## Query: "{query}"
+
+### Audit Summary
+- **Final Papers Count**: {final_papers_count}
+- **Quality Grade**: {quality_grade}
+- **Audit Status**: {auditor_result.get('status', 'Unknown')}
+
+{audit_report}
+
+---
+*This search was conducted using the enhanced Paper Search Auditor with multi-agent validation and improvement.*"""
+                        
+                    except Exception as agent_error:
+                        print(f"Agent execution error: {str(agent_error)}")
+                        response_text = f"Error executing enhanced paper search: {str(agent_error)}"
+                        
+            except Exception as command_error:
+                print(f"Command processing error: {str(command_error)}")
+                response_text = f"Error processing @paper-scout-auditor command: {str(command_error)}"
+        
+        elif request.message.startswith("@paper-critic"):
+            # Handle paper critic command
+            try:
+                # This would require papers to be provided in the message or context
+                response_text = "Paper Critic Agent requires papers to analyze. Please use @paper-scout-auditor for complete analysis."
+            except Exception as e:
+                response_text = f"Error processing @paper-critic command: {str(e)}"
+        
+        elif request.message.startswith("@paper-reviser"):
+            # Handle paper reviser command  
+            try:
+                response_text = "Paper Reviser Agent requires critic feedback. Please use @paper-scout-auditor for complete workflow."
+            except Exception as e:
+                response_text = f"Error processing @paper-reviser command: {str(e)}"
+        
         # Google Gemini models
-        if request.model.provider.lower() == "google":
+        elif request.model.provider.lower() == "google":
             print(f"Attempting to use Google Gemini model: {request.model.id}")
             print(f"Gemini service available: {gemini_service is not None}")
             print(f"Gemini service initialized: {gemini_service.initialized if gemini_service else False}")
