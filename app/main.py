@@ -4,6 +4,8 @@ from app.api.routes.models import router as models_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.tasks import router as tasks_router
 from app.api.routes.knowledge import router as knowledge_router
+from app.api.routes.commands import router as commands_router
+from app.api.routes.workflows import router as workflows_router
 from app.api.websockets.chat import router as ws_chat_router
 from app.core.config import settings
 from fastapi import FastAPI, Request, status
@@ -47,6 +49,8 @@ app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(tasks_router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["knowledge"])
+app.include_router(commands_router, prefix="/api/commands", tags=["commands"])
+app.include_router(workflows_router, prefix="/api/workflows", tags=["workflows"])
 
 # WebSocketの登録
 app.include_router(ws_chat_router)

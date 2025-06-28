@@ -285,6 +285,19 @@ class AgentOrchestrator:
             self.register_agent("paper_search_auditor", PaperSearchAuditor())
         except ImportError as e:
             print(f"⚠️ Could not import PaperSearchAuditor: {e}")
+        
+        # Register new streamlined agents
+        try:
+            from app.agents.streamlined_review_creation_agent import StreamlinedReviewCreationAgent
+            self.register_agent("streamlined_review_creation", StreamlinedReviewCreationAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import StreamlinedReviewCreationAgent: {e}")
+        
+        try:
+            from app.agents.research_workflow_coordinator import ResearchWorkflowCoordinator
+            self.register_agent("research_workflow", ResearchWorkflowCoordinator())
+        except ImportError as e:
+            print(f"⚠️ Could not import ResearchWorkflowCoordinator: {e}")
     
     def register_agent(self, agent_id: str, agent: BaseAgent):
         """Register a new agent"""
