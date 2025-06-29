@@ -19,7 +19,7 @@ def check_gemini_config():
     
     print(f"GOOGLE_CLOUD_PROJECT: {project_id if project_id else '❌ Not set'}")
     print(f"VERTEX_AI_LOCATION: {location}")
-    print(f"GOOGLE_APPLICATION_CREDENTIALS: {credentials if credentials else '❌ Not set (using default auth)'}")
+    print(f"GOOGLE_APPLICATION_CREDENTIALS: {'✅ Set' if credentials else '❌ Not set (using default auth)'}")
     
     if not project_id:
         print("\n❌ Error: GOOGLE_CLOUD_PROJECT is not set!")

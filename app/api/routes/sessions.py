@@ -12,34 +12,51 @@ from app.models.schemas import (
     ChatMessage
 )
 from app.services.session_service import session_service
+from app.middleware.auth import get_current_user, require_auth
 
 router = APIRouter()
 
-# ユーザー認証のヘルパー関数（簡易版）
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+# 後方互換性のための認証ヘルパー
+async def get_current_user_id(
+    current_user: Optional[dict] = Depends(get_current_user),
+    authorization: Optional[str] = Header(None)
+) -> str:
     """
-    簡易的なユーザー認証。実際の実装では JWT トークンの検証などを行う
-    現在は Authorization ヘッダーから user_id を直接取得
+    新しいJWT認証システムまたは従来の認証システムでユーザーIDを取得
+    後方互換性を保つため両方をサポート
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
+    print(f"🔐 Auth check - JWT user: {current_user is not None}, Auth header: {authorization is not None}")
     
-    # "Bearer user_id" 形式を想定
-    try:
-        scheme, user_id = authorization.split(" ", 1)
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+    # 新しいJWT認証を優先
+    if current_user and current_user.get("user_id"):
+        user_id = current_user["user_id"]
+        print(f"🔐 Using JWT user_id: {user_id}")
         return user_id
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    
+    # 従来の認証システムをフォールバック
+    if authorization:
+        try:
+            scheme, user_id = authorization.split(" ", 1)
+            if scheme.lower() == "bearer":
+                print(f"🔐 Using Bearer user_id: {user_id}")
+                return user_id
+        except ValueError:
+            print(f"🔐 Invalid authorization format: {authorization}")
+            pass
+    
+    print(f"🔐 No valid authentication found")
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 @router.get("/", response_model=ChatSessionListResponse)
 async def get_user_sessions(user_id: str = Depends(get_current_user_id)):
     """ユーザーのチャットセッション一覧を取得"""
     try:
+        print(f"📋 Getting sessions for user: {user_id}")
         sessions = await session_service.get_user_sessions(user_id)
+        print(f"📋 Found {len(sessions)} sessions")
         return ChatSessionListResponse(sessions=sessions)
     except Exception as e:
+        print(f"❌ Error getting sessions: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", response_model=ChatSessionResponse)

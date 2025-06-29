@@ -1,4 +1,6 @@
+import os
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.models import router as models_router
 from app.api.routes.sessions import router as sessions_router
@@ -15,6 +17,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.services.openai_service import openai_service
 from app.services.gemini_service import gemini_service
 
+# セキュリティミドルウェアのインポート
+from app.middleware.rate_limiter import rate_limiter
+from app.middleware.auth import auth_middleware
+from app.middleware.security import security_middleware
+
 # Firebase サービスをインポート（利用可能な場合）
 try:
     from app.services.firebase_service import firebase_service
@@ -22,28 +29,35 @@ try:
 except ImportError:
     FIREBASE_AVAILABLE = False
 
-app = FastAPI(title="ChatLLM API", debug=True)
+# デバッグモードを環境変数から設定
+DEBUG_MODE = os.environ.get("DEBUG", "false").lower() == "true"
+app = FastAPI(title="ChatLLM API", debug=DEBUG_MODE)
 
-# CORSミドルウェアの設定
+# セキュリティミドルウェアの設定（順序重要）
+app.middleware("http")(security_middleware)
+app.middleware("http")(rate_limiter)
+app.middleware("http")(auth_middleware)
+
+# CORSミドルウェアの設定（厳格化）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 開発中は全てのオリジンを許可
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=600,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 # バリデーションエラーのハンドラーを追加
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print(f"Validation error details: {exc.errors()}")
+    # Log validation error without exposing request details
+    print(f"Validation error occurred: {len(exc.errors())} field(s)")
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.errors()},
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Invalid input provided."},
     )
 
 # ルーターの登録
+app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(models_router, prefix="/api/models", tags=["models"])
 app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
@@ -75,13 +89,6 @@ async def health_check():
         "services": services_status
     }
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": str(exc)},
-    )
-
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
@@ -91,30 +98,16 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    print(f"Unhandled exception: {str(exc)}")
+    # Log general error without exposing request details
+    print(f"Unhandled exception occurred: {type(exc).__name__}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error", "message": str(exc)},
+        content={"detail": "An internal server error occurred."},
     )
     
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f"Request: {request.method} {request.url}")
-    print(f"Headers: {request.headers}")
-    
-    # リクエストボディを読み取る（必要に応じて）
-    # body = await request.body()
-    # if body:
-    #     print(f"Body: {body.decode()}")
-    
-    # 元のリクエストボディを復元するために新しいリクエストを作成
-    # request = Request(
-    #     scope=request.scope,
-    #     receive=request._receive,
-    #     send=request._send,
-    # )
-    
+    print(f"Request: {request.method}")
     response = await call_next(request)
     print(f"Response status: {response.status_code}")
-    
     return response

@@ -224,7 +224,7 @@ class KnowledgeService:
         include_metadata: bool = True
     ) -> List[Dict[str, Any]]:
         """Perform semantic vector search using embeddings"""
-        print(f"🔍 Vector search for user {user_id}: '{query}'")
+        print(f"🔍 Performing vector search")
         
         if not FIREBASE_AVAILABLE or not firebase_service.is_available():
             print("⚠️ Firebase not available, returning dummy results")
@@ -347,7 +347,7 @@ class KnowledgeService:
         limit: int = 100
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Get knowledge graph data from Firestore"""
-        print(f"🕸️ Getting knowledge graph for user {user_id}")
+        print(f"🕸️ Getting knowledge graph")
         
         if not FIREBASE_AVAILABLE or not firebase_service.is_available():
             print("⚠️ Firebase not available, returning dummy knowledge graph")
@@ -439,7 +439,7 @@ class KnowledgeService:
     
     async def get_processing_jobs(self, user_id: str) -> List[Dict[str, Any]]:
         """Get processing jobs for user from Firestore"""
-        print(f"⚙️ Getting processing jobs for user {user_id}")
+        print(f"⚙️ Getting processing jobs")
         
         if not FIREBASE_AVAILABLE or not firebase_service.is_available():
             print("⚠️ Firebase not available, returning empty list")
@@ -464,7 +464,7 @@ class KnowledgeService:
                     
                 jobs.append(job_data)
             
-            print(f"📊 Found {len(jobs)} processing jobs for user {user_id}")
+            print(f"📊 Found {len(jobs)} processing jobs")
             return jobs
             
         except Exception as e:
@@ -489,7 +489,7 @@ class KnowledgeService:
     
     async def get_processed_documents(self, user_id: str) -> List[Dict[str, Any]]:
         """Get processed documents for user from Firestore"""
-        print(f"📚 Getting processed documents for user {user_id}")
+        print(f"📚 Getting processed documents")
         
         if not FIREBASE_AVAILABLE or not firebase_service.is_available():
             print("⚠️ Firebase not available, returning empty list")
@@ -512,7 +512,7 @@ class KnowledgeService:
                     
                 documents.append(doc_data)
             
-            print(f"📊 Found {len(documents)} processed documents for user {user_id}")
+            print(f"📊 Found {len(documents)} processed documents")
             return documents
             
         except Exception as e:
@@ -521,12 +521,12 @@ class KnowledgeService:
     
     async def delete_document(self, user_id: str, document_id: str) -> bool:
         """Delete document - returns True for now"""
-        print(f"🗑️ Deleting document {document_id} for user {user_id}")
+        print(f"🗑️ Deleting document {document_id}")
         return True
     
     async def get_knowledge_stats(self, user_id: str) -> Dict[str, Any]:
         """Get knowledge base statistics from Firestore"""
-        print(f"📊 Getting knowledge stats for user {user_id}")
+        print(f"📊 Getting knowledge stats")
         
         if not FIREBASE_AVAILABLE or not firebase_service.is_available():
             print("⚠️ Firebase not available, returning empty stats")
@@ -559,7 +559,7 @@ class KnowledgeService:
                 'total_relations': relations_count
             }
             
-            print(f"📊 Stats for user {user_id}: {stats}")
+            print(f"📊 Knowledge stats retrieved successfully")
             return stats
             
         except Exception as e:
@@ -579,7 +579,7 @@ class KnowledgeService:
         options: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Reprocess document - returns success for now"""
-        print(f"🔄 Reprocessing document {document_id} for user {user_id}")
+        print(f"🔄 Reprocessing document {document_id}")
         
         return {
             'id': job_id,

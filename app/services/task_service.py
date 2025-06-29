@@ -305,6 +305,10 @@ class TaskService:
                 await self._execute_paper_scout(task_id, request)
             elif request.task_type == TaskType.REVIEW_CREATION:
                 await self._execute_review_creation(task_id, request)
+            elif request.task_type == TaskType.RESEARCH_WORKFLOW:
+                await self._execute_research_workflow(task_id, request)
+            elif request.task_type == TaskType.PAPER_SEARCH_AUDITOR:
+                await self._execute_paper_search_auditor(task_id, request)
             else:
                 raise ValueError(f"Unknown task type: {request.task_type}")
             
@@ -418,6 +422,68 @@ class TaskService:
             
         except Exception as e:
             raise Exception(f"Review creation execution failed: {str(e)}")
+    
+    async def _execute_research_workflow(self, task_id: str, request: TaskRequest):
+        """研究ワークフロータスクの実行"""
+        try:
+            from app.services.agent_base import agent_orchestrator
+            
+            await self.update_task_progress(
+                task_id=task_id,
+                current_step="Initializing Research Workflow",
+                progress_percentage=5.0
+            )
+            
+            # エージェントオーケストレータを使用してタスクを実行
+            result = await agent_orchestrator.execute_task(
+                task_id=task_id,
+                agent_id="research_workflow",
+                input_data=request.input_data,
+                config=request.config
+            )
+            
+            await self.update_task_progress(
+                task_id=task_id,
+                status=TaskStatus.COMPLETED,
+                progress_percentage=100.0,
+                steps_completed=1,
+                total_steps=1,
+                output_data=result
+            )
+            
+        except Exception as e:
+            raise Exception(f"Research workflow execution failed: {str(e)}")
+    
+    async def _execute_paper_search_auditor(self, task_id: str, request: TaskRequest):
+        """論文検索監査タスクの実行"""
+        try:
+            from app.services.agent_base import agent_orchestrator
+            
+            await self.update_task_progress(
+                task_id=task_id,
+                current_step="Initializing Paper Search Auditor",
+                progress_percentage=5.0
+            )
+            
+            # エージェントオーケストレータを使用してタスクを実行
+            result = await agent_orchestrator.execute_task(
+                task_id=task_id,
+                agent_id="paper_search_auditor",
+                input_data=request.input_data,
+                config=request.config
+            )
+            
+            await self.update_task_progress(
+                task_id=task_id,
+                status=TaskStatus.COMPLETED,
+                progress_percentage=100.0,
+                steps_completed=1,
+                total_steps=1,
+                output_data=result
+            )
+            
+        except Exception as e:
+            raise Exception(f"Paper search auditor execution failed: {str(e)}")
     
     async def stream_task_progress(self, task_id: str, user_id: str) -> AsyncGenerator[TaskProgress, None]:
         """タスク進捗のリアルタイムストリーミング"""

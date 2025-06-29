@@ -149,6 +149,8 @@ class TaskType(str, Enum):
     SIMPLE_CHAT = "simple_chat"
     PAPER_SCOUT = "paper_scout"
     REVIEW_CREATION = "review_creation"
+    RESEARCH_WORKFLOW = "research_workflow"
+    PAPER_SEARCH_AUDITOR = "paper_search_auditor"
     CUSTOM_AGENT = "custom_agent"
 
 class TaskRequest(BaseModel):

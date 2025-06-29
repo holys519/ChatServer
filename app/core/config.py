@@ -10,15 +10,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "ChatLLM API"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
-    # CORS設定
+    # CORS設定 - プロダクション環境では厳格化
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",   # React/Next.js dev server
         "http://localhost:8081",   # React Native Metro bundler
         "http://localhost:19000",  # Expo dev server
         "http://localhost:19006",  # Expo web
-        "exp://localhost:*",       # Expo development
-        "exp://*",                 # Expo tunnels
-        "*"  # Allow all origins for development
+        "exp://localhost:19000",   # Expo development
+        "exp://localhost:19006",   # Expo web development
+    ] if os.getenv("ENVIRONMENT", "development") == "development" else [
+        # プロダクション環境では実際のドメインのみ許可
+        os.getenv("FRONTEND_URL", "https://yourdomain.com")
     ]
     
     # API Keys
@@ -57,8 +59,38 @@ class Settings(BaseSettings):
     # セキュリティ設定
     API_KEY_HEADER: str = "X-API-Key"
     API_KEY: Optional[str] = os.getenv("API_KEY")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    
+    # JWT設定
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # Rate Limiting設定
+    RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+    RATE_LIMIT_PERIOD: int = int(os.getenv("RATE_LIMIT_PERIOD", "60"))  # seconds
+    
+    # セキュリティ設定
+    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    CORS_ALLOW_HEADERS: List[str] = [
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-CSRF-Token"
+    ]
+    
+    # .envファイルから読み込まれる追加設定
+    FRONTEND_URL: Optional[str] = os.getenv("FRONTEND_URL", "http://localhost:19006")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FILE: Optional[str] = os.getenv("LOG_FILE")
+    CORS_MAX_AGE: int = int(os.getenv("CORS_MAX_AGE", "86400"))
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # 追加フィールドを許可
 
 settings = Settings()
