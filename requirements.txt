@@ -4,7 +4,6 @@ black==25.1.0
 cachetools==5.5.2
 certifi==2025.4.26
 charset-normalizer==3.4.2
--e file:///mnt/c/Users/0025110396/study/chat_pj/ChatServer
 click==8.2.1
 coverage==7.8.2
 distro==1.9.0
@@ -84,16 +83,16 @@ websockets==15.0.1
 # LangChain/LangGraph dependencies for CRA-Copilot
 langchain==0.3.15
 langchain-core==0.3.41
-langchain-google-vertexai==2.1.8
+langchain-google-vertexai
 langchain-community==0.3.15
 langgraph==0.2.58
 langsmith==0.2.10
 
 # Additional tools for research agents
-pubmed-parser==0.4.2
+pubmed-parser==0.4.0
 xmltodict==0.14.2
 beautifulsoup4==4.12.3
-aiohttp==3.11.19
+aiohttp==3.11.14
 Pillow==11.1.0
 
 # Data processing
@@ -101,4 +100,4 @@ pandas==2.2.3
 numpy==2.2.6
 
 # Async utilities
-asyncio-mqtt==0.14.3
+asyncio-mqtt==0.14.0

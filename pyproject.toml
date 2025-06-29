@@ -5,7 +5,6 @@ description = "FastAPI backend for ChatLLM application with Gemini AI integratio
 authors = [
     {name = "ChatLLM Team", email = "team@chatllm.local"}
 ]
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.1",
