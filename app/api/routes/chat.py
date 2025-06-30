@@ -176,7 +176,7 @@ Based on your message, here are the recommended commands:
 
 """
                 else:
-                    response_text = """# Available CRA-Copilot Commands
+                    response_text = """# Available MedAgent-Chat Commands
 
 ## 🔬 Complete Workflows
 - **@research-workflow** - Full research pipeline (recommended)
@@ -434,7 +434,7 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
 - **View Details**: Use `/api/workflows/{review_workflow_id}` for detailed progress tracking
 
 ---
-*This literature review was created using the CRA-Copilot Review Creation Agent with multi-step workflow processing.*"""
+*This literature review was created using the MedAgent-Chat Review Creation Agent with multi-step workflow processing.*"""
                         
                     except Exception as agent_error:
                         print(f"Review creation agent execution error: {str(agent_error)}")
@@ -540,7 +540,7 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
 - **View Details**: Use `/api/workflows/{workflow_id}` for detailed progress tracking
 
 ---
-*This research was conducted using the enhanced CRA-Copilot Research Workflow Coordinator v{workflow_metadata.get('coordinator_version', '1.0')}*"""
+*This research was conducted using the enhanced MedAgent-Chat Research Workflow Coordinator v{workflow_metadata.get('coordinator_version', '1.0')}*"""
                         
                     except Exception as agent_error:
                         print(f"Research workflow execution error: {str(agent_error)}")

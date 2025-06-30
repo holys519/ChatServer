@@ -1,1 +1,1 @@
-# CRA-Copilot Backend Application
+# MedAgent-Chat Backend Application

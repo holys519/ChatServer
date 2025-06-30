@@ -1,5 +1,5 @@
 """
-LangChain integration service for CRA-Copilot
+LangChain integration service for MedAgent-Chat
 Provides utilities and tools for LangChain-based agents
 """
 
@@ -68,7 +68,7 @@ class LangChainService:
             search_tool = DuckDuckGoSearchRun()
             self.register_tool("web_search", search_tool)
             
-            # Custom CRA-Copilot tools
+            # Custom MedAgent-Chat tools
             self.register_tool("format_response", FormatResponseTool())
             self.register_tool("extract_keywords", ExtractKeywordsTool())
             
@@ -102,7 +102,7 @@ class LangChainService:
             for name, tool in self.tool_registry.items()
         }
 
-# Custom Tools for CRA-Copilot
+# Custom Tools for MedAgent-Chat
 
 class FormatResponseInput(BaseModel):
     """Input for format response tool"""

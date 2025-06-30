@@ -135,7 +135,7 @@ class ChatSessionResponse(BaseModel):
 class ChatSessionListResponse(BaseModel):
     sessions: List[ChatSessionResponse]
 
-# CRA-Copilot タスク管理用スキーマ
+# MedAgent-Chat タスク管理用スキーマ
 from enum import Enum
 
 class TaskStatus(str, Enum):

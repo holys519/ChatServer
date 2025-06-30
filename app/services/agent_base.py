@@ -14,7 +14,7 @@ from app.models.schemas import TaskProgress, TaskStatus, AgentStep
 from app.services.task_service import task_service
 
 class BaseAgent(ABC):
-    """Base class for all CRA-Copilot agents"""
+    """Base class for all MedAgent-Chat agents"""
     
     def __init__(
         self, 
@@ -226,7 +226,7 @@ class SimpleChatAgent(BaseAgent):
     def get_prompt_template(self) -> ChatPromptTemplate:
         """Get the chat agent's prompt template"""
         return ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful AI assistant integrated into the CRA-Copilot system.
+            ("system", """You are a helpful AI assistant integrated into the MedAgent-Chat system.
             
 Your role is to provide helpful, accurate, and engaging responses to user queries.
 You are part of a research-focused application, so you should be particularly good at:
@@ -412,7 +412,7 @@ class SimpleChatAgent(BaseAgent):
     def get_prompt_template(self) -> ChatPromptTemplate:
         """Get the chat agent's prompt template"""
         return ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful AI assistant integrated into the CRA-Copilot system.
+            ("system", """You are a helpful AI assistant integrated into the MedAgent-Chat system.
             
 Your role is to provide helpful, accurate, and engaging responses to user queries.
 You are part of a research-focused application, so you should be particularly good at:

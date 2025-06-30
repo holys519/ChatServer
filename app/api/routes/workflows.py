@@ -1,5 +1,5 @@
 """
-Workflows API for CRA-Copilot
+Workflows API for MedAgent-Chat
 Provides workflow status tracking, progress monitoring, and result visualization
 """
 

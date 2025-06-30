@@ -1,5 +1,5 @@
 """
-Workflow Status Service for CRA-Copilot
+Workflow Status Service for MedAgent-Chat
 Manages workflow states, progress tracking, and result formatting
 """
 

@@ -1,5 +1,5 @@
 """
-Commands API for CRA-Copilot
+Commands API for MedAgent-Chat
 Provides command discovery, suggestions, and help endpoints
 """
 

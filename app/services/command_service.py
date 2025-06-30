@@ -1,5 +1,5 @@
 """
-Command Service for CRA-Copilot
+Command Service for MedAgent-Chat
 Manages command discovery, suggestions, and help system
 """
 
@@ -307,7 +307,7 @@ class CommandService:
         
         else:
             # Generate overview of all commands
-            help_text = """# CRA-Copilot Commands
+            help_text = """# MedAgent-Chat Commands
 
 ## Available Commands
 

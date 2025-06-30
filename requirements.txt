@@ -62,7 +62,7 @@ uvicorn==0.34.3
 uvloop==0.21.0
 websockets==15.0.1
 
-# LangChain/LangGraph dependencies for CRA-Copilot
+# LangChain/LangGraph dependencies for MedAgent-Chat
 langchain==0.3.15
 langchain-core==0.3.41
 langchain-google-vertexai

@@ -1,5 +1,5 @@
 """
-PubMed integration service for CRA-Copilot
+PubMed integration service for MedAgent-Chat
 Provides tools for searching and retrieving research papers from PubMed
 """
 
@@ -29,8 +29,8 @@ class PubMedService:
     
     def __init__(self):
         self.base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-        self.tool_name = "CRA-Copilot"
-        self.email = "cra-copilot@research.ai"  # Should be configurable
+        self.tool_name = "MedAgent-Chat"
+        self.email = "MedAgent-Chat@research.ai"  # Should be configurable
         self.session: Optional[aiohttp.ClientSession] = None
         
     async def _get_session(self) -> aiohttp.ClientSession:
