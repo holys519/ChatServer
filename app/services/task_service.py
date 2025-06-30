@@ -165,12 +165,14 @@ class TaskService:
             
             db = firebase_service.get_firestore_client()
             task_ref = db.collection('tasks').document(task_id)
-            task_ref.update(update_data)
+            task_ref.set(update_data, merge=True)
             
             print(f"✅ Task {task_id} progress updated")
             return True
             
         except Exception as e:
+            # ★★★ エラーが発生した場合もパスを出力 ★★★
+            print(f"DEBUG: Failed to update Firestore. Path was: tasks/{task_id}")
             print(f"❌ Error updating task progress: {str(e)}")
             return False
     

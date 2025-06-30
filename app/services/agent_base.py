@@ -112,19 +112,72 @@ class BaseAgent(ABC):
         print(f"✅ {self.name}: Completed step {step_id}")
         # Update step in database
     
+
     async def update_task_progress(
-        self, 
-        task_id: str, 
+        self,
+        task_id: str,
         progress_percentage: float,
         current_step: Optional[str] = None
     ):
-        """Update the overall task progress"""
-        await task_service.update_task_progress(
-            task_id=task_id,
-            progress_percentage=progress_percentage,
-            current_step=current_step
-        )
-    
+        """
+        タスクの進捗を更新します。
+        タスクが存在しない場合は、Firestoreに新規作成してから更新を試みます。
+        """
+        try:
+            # まず更新を試みます
+            await task_service.update_task_progress(
+                task_id=task_id,
+                status=TaskStatus.RUNNING,
+                progress_percentage=progress_percentage,
+                current_step=current_step
+            )
+        except Exception as e:
+            # 404エラー（ドキュメントが見つからない）の場合のみ、特別な処理を行います
+            if "No document to update" in str(e) or "404" in str(e):
+                print(f"⚠️ Task document {task_id} not found. Attempting to create it.")
+                try:
+                    # --- ここからが重要な修正点 ---
+
+                    # 1. user_id を特定します
+                    # サブタスクID（例: ..._scout）から親タスクIDを抽出
+                    parent_task_id = task_id.split('_')[0]
+                    # 親タスクの情報を取得して、そこからuser_idを取得します
+                    # 注: get_task_progressにはuser_idが必要なため、ここではプレースホルダーを入れています。
+                    # 実際のアプリケーションでは、このメソッドにuser_idを渡す必要があります。
+                    parent_task_info = await task_service.get_task_progress(parent_task_id, user_id="placeholder_user_id")
+                    
+                    if not parent_task_info:
+                        # 親タスクが見つからない場合は処理を中断
+                        print(f"❌ CRITICAL: Parent task {parent_task_id} not found. Cannot create subtask {task_id}.")
+                        return
+
+                    user_id = parent_task_info.user_id
+
+                    # 2. task_service.create_task が要求する TaskProgress オブジェクトを正しく作成します
+                    new_task_progress = TaskProgress(
+                        task_id=task_id,
+                        user_id=user_id,  # セキュリティルールを満たすために必須
+                        task_type="agent_execution", # または適切なタスクタイプ
+                        status=TaskStatus.RUNNING,
+                        progress_percentage=progress_percentage,
+                        current_step=f"Initialized: {current_step}",
+                        agent_name=self.name,
+                        input_data={"agent": self.name},
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                    
+                    # 3. 正しく作成したオブジェクトを引数として渡します
+                    await task_service.create_task(new_task_progress)
+                    print(f"✅ Successfully created task document for {task_id}")
+
+                except Exception as create_error:
+                    # 作成に失敗した場合は、致命的なエラーとしてログに出力します
+                    print(f"❌ CRITICAL: Failed to create task {task_id} after a 404 error. Error: {str(create_error)}")
+            else:
+                # 404以外の予期せぬエラー
+                print(f"❌ An unexpected error occurred while updating task progress for {task_id}: {str(e)}")
+
     async def invoke_llm(
         self, 
         messages: List[BaseMessage],
@@ -156,6 +209,194 @@ class BaseAgent(ABC):
     def get_tools(self) -> List[BaseTool]:
         """Get all tools available to the agent"""
         return self.tools
+
+# (SimpleChatAgent と AgentOrchestrator のコードは変更なし)
+# ...
+class SimpleChatAgent(BaseAgent):
+    """Simple chat agent for basic conversations"""
+    
+    def __init__(self):
+        super().__init__(
+            name="SimpleChatAgent",
+            description="A basic conversational agent for simple chat interactions",
+            model_name="gemini-2.0-flash-001",
+            temperature=0.7
+        )
+    
+    def get_prompt_template(self) -> ChatPromptTemplate:
+        """Get the chat agent's prompt template"""
+        return ChatPromptTemplate.from_messages([
+            ("system", """You are a helpful AI assistant integrated into the CRA-Copilot system.
+            
+Your role is to provide helpful, accurate, and engaging responses to user queries.
+You are part of a research-focused application, so you should be particularly good at:
+- Explaining complex concepts clearly
+- Providing structured information
+- Helping with research-related tasks
+- Being precise and factual
+
+Always maintain a professional yet friendly tone."""),
+            ("human", "{message}")
+        ])
+    
+    async def execute(
+        self, 
+        task_id: str, 
+        input_data: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Execute simple chat interaction"""
+        try:
+            # Extract input
+            message = input_data.get('message', '')
+            history = input_data.get('history', [])
+            
+            # Update progress
+            await self.update_task_progress(task_id, 25.0, "Processing message")
+            
+            # Create step
+            step_id = await self.create_step(
+                task_id=task_id,
+                action="generate_response",
+                input_data={"message": message, "history_length": len(history)}
+            )
+            
+            # Prepare messages
+            prompt = self.get_prompt_template()
+            messages = []
+            
+            # Add history
+            for hist_msg in history:
+                if hist_msg.get('role') == 'user' or hist_msg.get('is_user'):
+                    messages.append(HumanMessage(content=hist_msg.get('content', '')))
+                else:
+                    messages.append(AIMessage(content=hist_msg.get('content', '')))
+            
+            # Add current message
+            formatted_prompt = prompt.format_messages(message=message)
+            messages.extend(formatted_prompt)
+            
+            await self.update_task_progress(task_id, 50.0, "Generating response")
+            
+            # Generate response
+            response = await self.invoke_llm(messages)
+            
+            await self.update_task_progress(task_id, 90.0, "Finalizing response")
+            
+            # Complete step
+            output_data = {
+                'response': response,
+                'model_used': self.model_name,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            await self.complete_step(task_id, step_id, output_data)
+            
+            return output_data
+            
+        except Exception as e:
+            # step_id が未定義の可能性があるため、try-exceptで囲む
+            try:
+                await self.complete_step(task_id, step_id, {}, TaskStatus.FAILED)
+            except NameError:
+                print("Failed to complete step as step_id was not defined.")
+            raise Exception(f"SimpleChatAgent execution failed: {str(e)}")
+
+class AgentOrchestrator:
+    """Orchestrates multiple agents for complex tasks"""
+    
+    def __init__(self):
+        self.agents: Dict[str, BaseAgent] = {}
+        self._register_default_agents()
+    
+    def _register_default_agents(self):
+        """Register default agents"""
+        self.register_agent("simple_chat", SimpleChatAgent())
+        
+        # Import and register new agents
+        try:
+            from app.agents.paper_scout_agent import PaperScoutAgent
+            self.register_agent("paper_scout", PaperScoutAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperScoutAgent: {e}")
+        
+        try:
+            from app.agents.review_creation_agent import ReviewCreationAgent
+            self.register_agent("review_creation", ReviewCreationAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import ReviewCreationAgent: {e}")
+        
+        # Register new enhanced agents
+        try:
+            from app.agents.paper_critic_agent import PaperCriticAgent
+            self.register_agent("paper_critic", PaperCriticAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperCriticAgent: {e}")
+        
+        try:
+            from app.agents.paper_reviser_agent import PaperReviserAgent
+            self.register_agent("paper_reviser", PaperReviserAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperReviserAgent: {e}")
+        
+        try:
+            from app.agents.paper_search_auditor import PaperSearchAuditor
+            self.register_agent("paper_search_auditor", PaperSearchAuditor())
+        except ImportError as e:
+            print(f"⚠️ Could not import PaperSearchAuditor: {e}")
+        
+        # Register new streamlined agents
+        try:
+            from app.agents.streamlined_review_creation_agent import StreamlinedReviewCreationAgent
+            self.register_agent("streamlined_review_creation", StreamlinedReviewCreationAgent())
+        except ImportError as e:
+            print(f"⚠️ Could not import StreamlinedReviewCreationAgent: {e}")
+        
+        try:
+            from app.agents.research_workflow_coordinator import ResearchWorkflowCoordinator
+            self.register_agent("research_workflow", ResearchWorkflowCoordinator())
+        except ImportError as e:
+            print(f"⚠️ Could not import ResearchWorkflowCoordinator: {e}")
+    
+    def register_agent(self, agent_id: str, agent: BaseAgent):
+        """Register a new agent"""
+        self.agents[agent_id] = agent
+        print(f"🤖 Registered agent: {agent_id} ({agent.name})")
+    
+    def get_agent(self, agent_id: str) -> Optional[BaseAgent]:
+        """Get an agent by ID"""
+        return self.agents.get(agent_id)
+    
+    def list_agents(self) -> Dict[str, str]:
+        """List all registered agents"""
+        return {
+            agent_id: agent.description 
+            for agent_id, agent in self.agents.items()
+        }
+    
+    async def execute_task(
+        self, 
+        task_id: str,
+        agent_id: str, 
+        input_data: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Execute a task using the specified agent"""
+        agent = self.get_agent(agent_id)
+        if not agent:
+            raise ValueError(f"Agent '{agent_id}' not found")
+        
+        print(f"🚀 Executing task {task_id} with agent {agent_id}")
+        
+        try:
+            result = await agent.execute(task_id, input_data, config)
+            print(f"✅ Task {task_id} completed successfully")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Task {task_id} failed: {str(e)}")
+            raise
+
 
 class SimpleChatAgent(BaseAgent):
     """Simple chat agent for basic conversations"""

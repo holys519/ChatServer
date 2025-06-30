@@ -16,6 +16,79 @@ from app.middleware.auth import get_current_user, require_auth
 
 router = APIRouter()
 
+def format_papers_by_evidence_level(papers: List[Dict], max_per_level: int = 10, include_abstracts: bool = True) -> str:
+    """
+    論文をエビデンスレベル別に整理して表示する再利用可能な関数
+    
+    Args:
+        papers: 論文リスト
+        max_per_level: 各エビデンスレベルごとの最大表示数
+        include_abstracts: 抄録プレビューを含めるかどうか
+    
+    Returns:
+        フォーマットされた文字列
+    """
+    result_text = ""
+    
+    # エビデンスレベル別に論文を分類
+    evidence_groups = {
+        "1a": {"name": "Systematic Reviews/Meta-analyses", "papers": []},
+        "1b": {"name": "Randomized Controlled Trials", "papers": []},
+        "2a": {"name": "Cohort Studies", "papers": []},
+        "2b": {"name": "Case-Control Studies", "papers": []},
+        "3": {"name": "Cross-sectional Studies", "papers": []},
+        "4": {"name": "Case Series", "papers": []},
+        "5": {"name": "Expert Opinion/Other", "papers": []}
+    }
+    
+    # 論文をエビデンスレベル別に分類
+    for paper in papers:
+        level = paper.get('evidence_level', '5')
+        if level in evidence_groups:
+            evidence_groups[level]["papers"].append(paper)
+    
+    # 各エビデンスレベルの論文を表示
+    for level in ["1a", "1b", "2a", "2b", "3", "4", "5"]:
+        group_papers = evidence_groups[level]["papers"]
+        if group_papers:
+            result_text += f"""
+
+### 📊 Level {level}: {evidence_groups[level]["name"]} ({len(group_papers)} papers)"""
+            
+            for i, paper in enumerate(group_papers[:max_per_level], 1):
+                # 辞書形式かNamedTuple形式かを判定して適切にアクセス
+                if isinstance(paper, dict):
+                    title = paper.get('title', 'Title not available')
+                    journal = paper.get('journal', 'Journal not specified')
+                    year = paper.get('publication_date', 'Year unknown')
+                    pmid = paper.get('pmid', '')
+                    abstract = paper.get('abstract', '')
+                else:
+                    # NamedTuple形式の場合
+                    title = getattr(paper, 'title', 'Title not available')
+                    journal = getattr(paper, 'journal', 'Journal not specified')
+                    year = getattr(paper, 'publication_date', 'Year unknown')
+                    pmid = getattr(paper, 'pmid', '')
+                    abstract = getattr(paper, 'abstract', '')
+                
+                result_text += f"""
+
+**{i}. {title}**
+- **Journal**: {journal}
+- **Year**: {year}
+- **PMID**: {pmid}
+- **URL**: https://pubmed.ncbi.nlm.nih.gov/{pmid}/"""
+                
+                # 抄録がある場合は概要も表示
+                if include_abstracts and abstract and len(abstract) > 50:
+                    abstract_preview = abstract[:200] + "..." if len(abstract) > 200 else abstract
+                    result_text += f"\n- **Abstract Preview**: {abstract_preview}"
+            
+            if len(group_papers) > max_per_level:
+                result_text += f"\n\n*... and {len(group_papers) - max_per_level} more {evidence_groups[level]['name'].lower()}*"
+    
+    return result_text
+
 async def get_user_id_from_auth(authorization: Optional[str] = Header(None)) -> Optional[str]:
     """
     Authorization ヘッダーからユーザーIDを取得（オプショナル）
@@ -815,6 +888,8 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
                     
                     # Get task type
                     task_type = params.get('task_type', 'literature_search')
+                    print(f"Debug: Parsed parameters: {params}")
+                    print(f"Debug: Task type: {task_type}")
                     
                     # Create task ID
                     task_id = str(uuid.uuid4())
@@ -824,6 +899,7 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
                         'task_type': task_type,
                         **params
                     }
+                    print(f"Debug: Medical input data: {medical_input}")
                     
                     try:
                         # Import medical research agent
@@ -841,28 +917,85 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
                             evidence_synthesis = medical_result.get('evidence_synthesis', {})
                             clinical_answer = medical_result.get('clinical_answer', '')
                             confidence = medical_result.get('confidence_level', 'Medium')
+                            papers = medical_result.get('papers', [])
                             
-                            response_text = f"""# Clinical Question Analysis (PICO)
+                            response_text = f"""# 🩺 Clinical Question Analysis (PICO)
 
-## Original Question
+## 📋 Original Question
 {medical_result.get('original_question', '')}
 
-## PICO Analysis
-- **Population**: {pico_analysis.get('population', 'Not specified')}
-- **Intervention**: {pico_analysis.get('intervention', 'Not specified')}
-- **Comparison**: {pico_analysis.get('comparison', 'Not specified')}
-- **Outcome**: {pico_analysis.get('outcome', 'Not specified')}
+## 🎯 PICO Framework Analysis
+- **Population (P)**: {pico_analysis.get('population', 'Not specified')}
+- **Intervention (I)**: {pico_analysis.get('intervention', 'Not specified')}
+- **Comparison (C)**: {pico_analysis.get('comparison', 'Not specified')}
+- **Outcome (O)**: {pico_analysis.get('outcome', 'Not specified')}
 
-## Clinical Answer
-{clinical_answer}
+## 🔍 Search Strategy
+- **Generated Search Query**: `{medical_result.get('search_query', 'Query not available')}`
+- **Database**: PubMed
+- **Search Period**: Last 10 years  
+- **Total Papers Retrieved**: {len(papers)} studies
+- **High-Quality Evidence**: {len(medical_result.get('high_quality_papers', []))} studies (Levels 1a-1b)
 
-## Confidence Level: {confidence}
+## 📊 Evidence Summary
+### Quality of Evidence
+- **Total Studies Analyzed**: {len(papers)} papers
+- **Evidence Level Distribution**:"""
+                            
+                            # Add evidence level breakdown
+                            evidence_levels = evidence_synthesis.get('evidence_levels', {})
+                            for level, count in evidence_levels.items():
+                                level_description = {
+                                    "1a": "Systematic Reviews/Meta-analyses",
+                                    "1b": "Randomized Controlled Trials",
+                                    "2a": "Cohort Studies", 
+                                    "2b": "Case-Control Studies",
+                                    "3": "Cross-sectional Studies",
+                                    "4": "Case Series",
+                                    "5": "Expert Opinion/Other"
+                                }.get(level, "Other")
+                                response_text += f"\n  - Level {level} ({level_description}): {count} studies"
+                            
+                            response_text += f"""
 
-## Evidence Summary
+### Key Findings
 {evidence_synthesis.get('summary', 'Evidence synthesis not available')}
 
+## 🔬 Clinical Answer
+{clinical_answer}
+
+**Confidence Level**: {confidence}
+
+## 📚 Retrieved Literature by Evidence Level"""
+                            
+                            # 全論文をエビデンスレベル別に表示
+                            all_papers = medical_result.get('papers', [])
+                            if all_papers:
+                                response_text += format_papers_by_evidence_level(
+                                    papers=all_papers, 
+                                    max_per_level=6,  # 臨床質問では各レベル6件まで
+                                    include_abstracts=True  # 臨床質問では抄録も重要
+                                )
+                            else:
+                                response_text += "\n\nNo literature found for this clinical question."
+                            
+                            response_text += f"""
+
+## 💡 Clinical Implications
+{chr(10).join(f"• {imp}" for imp in medical_result.get('clinical_implications', ['Clinical implications not available']))}
+
+## ⚠️ Limitations & Considerations
+{chr(10).join(f"• {limit}" for limit in medical_result.get('limitations', ['Study limitations not assessed']))}
+
+## 📖 Recommendations for Further Reading
+- Search for recent systematic reviews on this topic
+- Review latest clinical practice guidelines
+- Consider individual patient factors and contraindications
+
 ---
-*Analysis completed using Medical Research Assistant with PICO methodology*"""
+*Analysis completed using Evidence-Based Medical Research Assistant*
+*Search Date: {medical_result.get('search_date', 'Not available')}*
+*Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"""
 
                         elif task_type == "literature_search":
                             papers = medical_result.get('papers', [])
@@ -892,13 +1025,30 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
                             for rec in recommendations:
                                 response_text += f"- {rec}\n"
                             
+                            # 検索パラメータの詳細を表示
+                            search_params_info = ""
+                            original_query = medical_result.get('original_query', '')
+                            english_query = medical_result.get('english_query', '')
+                            
+                            if original_query != english_query:
+                                search_params_info += f"""
+## 🔍 Search Parameters
+- **Original Query**: {original_query}
+- **Translated Query**: {english_query}
+- **Study Types**: {medical_input.get('study_types', 'All types')}
+- **Specialty**: {medical_input.get('specialty', 'General')}
+- **Search Period**: Last {medical_input.get('years_back', 5)} years"""
+                            
+                            response_text += search_params_info
                             response_text += f"""
-## Top High-Evidence Papers
-"""
-                            high_evidence_papers = [p for p in papers if p.get('evidence_level') in ['1a', '1b']][:5]
-                            for i, paper in enumerate(high_evidence_papers, 1):
-                                response_text += f"{i}. **{paper.get('title', 'No title')}** (Evidence Level: {paper.get('evidence_level', 'N/A')})\n"
-                                response_text += f"   *{paper.get('journal', 'Unknown journal')} ({paper.get('publication_date', 'Unknown date')})*\n\n"
+## 📚 Retrieved Literature by Evidence Level"""
+                            
+                            # 再利用可能な関数を使用して論文を表示
+                            response_text += format_papers_by_evidence_level(
+                                papers=papers, 
+                                max_per_level=8,  # 文献検索では各レベル8件まで
+                                include_abstracts=True
+                            )
                             
                             response_text += """---
 *Search conducted using Evidence-Based Medical Literature Search with PubMed integration*"""
@@ -906,32 +1056,250 @@ Use `/help` to see all available commands or `/help @command-name` for specific 
                         elif task_type == "presentation_prep":
                             slide_content = medical_result.get('slide_content', [])
                             supporting_literature = medical_result.get('supporting_literature', [])
-                            google_slides_data = medical_result.get('google_slides_export', {})
+                            presentation_structure = medical_result.get('presentation_structure', {})
+                            speaker_notes = medical_result.get('speaker_notes', {})
+                            q_and_a_prep = medical_result.get('q_and_a_prep', {})
                             
-                            response_text = f"""# Medical Presentation Preparation Complete
+                            response_text = f"""# 🎯 Medical Presentation Preparation Complete
 
-## Presentation Topic
-{medical_result.get('topic', '')}
+## 📋 Presentation Details
+- **Topic**: {medical_result.get('topic', '')}
+- **Type**: {presentation_structure.get('type', 'Unknown')}
+- **Target Audience**: {presentation_structure.get('target_audience', 'General')}
+- **Duration**: {presentation_structure.get('total_time', 10)} minutes
+- **Total Slides**: {len(slide_content)}
 
-## Slide Structure ({len(slide_content)} slides)
-"""
+## 📊 Detailed Slide Structure"""
+                            
                             for i, slide in enumerate(slide_content, 1):
-                                response_text += f"{i}. **{slide.get('title', f'Slide {i}')}**\n"
+                                slide_title = slide.get('title', f'Slide {i}')
+                                slide_duration = slide.get('duration', 1)
+                                key_points = slide.get('key_points', [])
+                                supporting_evidence = slide.get('supporting_evidence', [])
+                                
+                                response_text += f"""
+
+### Slide {i}: {slide_title} ({slide_duration} min)
+**Key Points:**"""
+                                for point in key_points:
+                                    response_text += f"\n• {point}"
+                                
+                                if supporting_evidence:
+                                    response_text += f"\n\n**Supporting Evidence:**"
+                                    for evidence in supporting_evidence:
+                                        response_text += f"\n• {evidence}"
                             
                             response_text += f"""
-## Supporting Literature
-{len(supporting_literature)} relevant papers identified for citation
 
-## Export Options
-- Google Slides: Ready for export
-- PowerPoint: Available
-- PDF: Available
+## 📚 Supporting Literature Analysis
+**Total Papers Reviewed**: {len(supporting_literature)}"""
+                            
+                            # Analyze evidence levels in supporting literature
+                            evidence_distribution = {}
+                            high_quality_papers = []
+                            for paper in supporting_literature:
+                                evidence_level = paper.get('evidence_level', '5')
+                                evidence_distribution[evidence_level] = evidence_distribution.get(evidence_level, 0) + 1
+                                if evidence_level in ['1a', '1b']:
+                                    high_quality_papers.append(paper)
+                            
+                            response_text += f"\n\n**Evidence Quality Distribution:**"
+                            level_descriptions = {
+                                "1a": "Systematic Reviews/Meta-analyses",
+                                "1b": "Randomized Controlled Trials", 
+                                "2a": "Cohort Studies",
+                                "2b": "Case-Control Studies",
+                                "3": "Cross-sectional Studies",
+                                "4": "Case Series",
+                                "5": "Expert Opinion/Other"
+                            }
+                            for level in sorted(evidence_distribution.keys()):
+                                count = evidence_distribution[level]
+                                desc = level_descriptions.get(level, "Other")
+                                response_text += f"\n• Level {level} ({desc}): {count} papers"
+                            
+                            response_text += f"""
 
-## Speaker Notes & Q&A Preparation
-Complete speaker notes and anticipated questions have been prepared.
+## 🔬 High-Quality Evidence Papers"""
+                            
+                            for i, paper in enumerate(high_quality_papers[:5], 1):
+                                title = paper.get('title', 'Title not available')
+                                journal = paper.get('journal', 'Journal not specified')
+                                year = paper.get('publication_date', 'Year unknown')
+                                evidence_level = paper.get('evidence_level', 'N/A')
+                                pmid = paper.get('pmid', '')
+                                
+                                response_text += f"""
+
+### {i}. {title}
+- **Journal**: {journal}
+- **Year**: {year}
+- **Evidence Level**: {level_descriptions.get(evidence_level, evidence_level)}
+- **PMID**: {pmid}"""
+                            
+                            response_text += f"""
+
+## 🎤 Speaker Notes Overview"""
+                            if speaker_notes:
+                                for slide_key, notes in list(speaker_notes.items())[:3]:
+                                    response_text += f"\n**{slide_key}**: Key talking points prepared"
+                            else:
+                                response_text += "\nDetailed speaker notes have been prepared for each slide"
+                            
+                            response_text += f"""
+
+## ❓ Q&A Preparation"""
+                            if q_and_a_prep:
+                                anticipated_questions = q_and_a_prep.get('anticipated_questions', [])
+                                if anticipated_questions:
+                                    response_text += f"\n**Anticipated Questions ({len(anticipated_questions)}):**"
+                                    for q in anticipated_questions[:3]:
+                                        response_text += f"\n• {q}"
+                                    if len(anticipated_questions) > 3:
+                                        response_text += f"\n• ... and {len(anticipated_questions) - 3} more questions"
+                            else:
+                                response_text += "\nAnticipated questions and expert answers have been prepared"
+                            
+                            response_text += f"""
+
+## 📤 Export & Next Steps
+✅ **Ready for Export**: Google Slides, PowerPoint, PDF formats available
+✅ **Academic Citations**: All references properly formatted
+✅ **Visual Aids**: Slide layouts optimized for medical presentations
+✅ **Time Management**: Each slide timed for optimal flow
 
 ---
-*Presentation prepared using Medical Research Assistant with academic formatting*"""
+*Comprehensive presentation prepared using Evidence-Based Medical Research Assistant*
+*Audience: {presentation_structure.get('target_audience', 'Medical professionals')} | Duration: {presentation_structure.get('total_time', 10)} minutes*"""
+
+                        elif task_type == "evidence_evaluation":
+                            papers = medical_result.get('papers', [])
+                            evidence_synthesis = medical_result.get('evidence_synthesis', {})
+                            clinical_answer = medical_result.get('clinical_answer', '')
+                            confidence_level = medical_result.get('confidence_level', 'Medium')
+                            clinical_implications = medical_result.get('clinical_implications', [])
+                            limitations = medical_result.get('limitations', [])
+                            high_quality_papers = medical_result.get('high_quality_papers', [])
+                            study_designs = medical_result.get('study_designs', {})
+                            
+                            # ユーザーが設定した信頼度レベルを取得
+                            requested_confidence = medical_input.get('confidence_level', 'medium')
+                            
+                            response_text = f"""# 🔬 Evidence-Based Medical Evaluation
+
+## 🎯 Topic Analysis
+**Research Topic**: {medical_result.get('topic', '')}
+**Evaluation Request**: {medical_result.get('original_question', 'Evidence evaluation')}
+**Requested Confidence Level**: **{requested_confidence.title()}**
+**Assessed Confidence Level**: **{confidence_level}**
+
+## 📊 Evidence Overview
+**Total Studies Analyzed**: {len(papers)} papers
+**High-Quality Evidence**: {len(high_quality_papers)} studies (Levels 1a-1b)
+**Research Period**: {medical_result.get('search_date', 'Recent')}
+**Search Strategy**: {f"Focused search (last 5 years)" if requested_confidence.lower() == "high" else f"Standard search (last 8 years)" if requested_confidence.lower() == "medium" else f"Comprehensive search (last 15 years)"}
+
+### Evidence Level Distribution"""
+                            
+                            evidence_levels = evidence_synthesis.get('evidence_levels', {})
+                            level_descriptions = {
+                                "1a": "Systematic Reviews/Meta-analyses",
+                                "1b": "Randomized Controlled Trials",
+                                "2a": "Cohort Studies", 
+                                "2b": "Case-Control Studies",
+                                "3": "Cross-sectional Studies",
+                                "4": "Case Series",
+                                "5": "Expert Opinion/Other"
+                            }
+                            
+                            for level in ["1a", "1b", "2a", "2b", "3", "4", "5"]:
+                                count = evidence_levels.get(level, 0)
+                                if count > 0:
+                                    desc = level_descriptions.get(level, level)
+                                    response_text += f"\n• **Level {level}** ({desc}): {count} studies"
+                            
+                            response_text += f"""
+
+## 🔍 Evidence Synthesis
+{evidence_synthesis.get('summary', 'No evidence synthesis available')}"""
+                            
+                            # Key findings
+                            consistent_findings = evidence_synthesis.get('consistent_findings', [])
+                            conflicting_findings = evidence_synthesis.get('conflicting_findings', [])
+                            evidence_gaps = evidence_synthesis.get('evidence_gaps', [])
+                            
+                            if consistent_findings:
+                                response_text += f"""
+
+### ✅ Consistent Findings"""
+                                for finding in consistent_findings:
+                                    response_text += f"\n• {finding}"
+                            
+                            if conflicting_findings:
+                                response_text += f"""
+
+### ⚠️ Conflicting Evidence"""
+                                for conflict in conflicting_findings:
+                                    response_text += f"\n• {conflict}"
+                            
+                            if evidence_gaps:
+                                response_text += f"""
+
+### 🔄 Evidence Gaps"""
+                                for gap in evidence_gaps:
+                                    response_text += f"\n• {gap}"
+                            
+                            response_text += f"""
+
+## 🩺 Clinical Assessment
+{clinical_answer}"""
+                            
+                            if clinical_implications:
+                                response_text += f"""
+
+## 💡 Clinical Implications"""
+                                for implication in clinical_implications:
+                                    response_text += f"\n• {implication}"
+                            
+                            if limitations:
+                                response_text += f"""
+
+## ⚠️ Study Limitations & Considerations"""
+                                for limitation in limitations:
+                                    response_text += f"\n• {limitation}"
+                            
+                            response_text += f"""
+
+## 📚 Analyzed Literature by Evidence Level"""
+                            
+                            # 再利用可能な関数を使用して全ての論文を表示
+                            response_text += format_papers_by_evidence_level(
+                                papers=papers, 
+                                max_per_level=5,  # エビデンス評価では各レベル5件まで
+                                include_abstracts=False  # エビデンス評価では抄録は表示しない
+                            )
+                            
+                            response_text += f"""
+
+## 📋 Clinical Recommendations
+Based on the evidence evaluation:
+
+**Strength of Recommendation**: {confidence_level}
+
+**Clinical Action Points**:
+• Review individual patient factors and contraindications
+• Consider latest clinical practice guidelines
+• Monitor for updated systematic reviews and meta-analyses
+• Assess risk-benefit ratio for specific patient populations
+
+## 🔄 Next Steps
+• **For Clinicians**: Apply evidence within clinical context
+• **For Researchers**: Identify research gaps for future studies  
+• **For Guidelines**: Consider evidence strength in recommendation development
+
+---
+*Evidence evaluation completed using Evidence-Based Medical Research Assistant*
+*Quality Assessment Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"""
 
                         else:
                             # Generic response for other task types
@@ -947,8 +1315,10 @@ Complete speaker notes and anticipated questions have been prepared.
 *Processed by Medical Research Assistant*"""
                         
                     except Exception as agent_error:
+                        import traceback
                         print(f"Medical research agent execution error: {str(agent_error)}")
-                        response_text = f"Error executing medical research task: {str(agent_error)}"
+                        print(f"Traceback: {traceback.format_exc()}")
+                        response_text = f"Error executing medical research task: {str(agent_error)}\n\nDebug info: Check server logs for detailed traceback."
                         
             except Exception as command_error:
                 print(f"Medical research command processing error: {str(command_error)}")

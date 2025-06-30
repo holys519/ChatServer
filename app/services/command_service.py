@@ -15,6 +15,7 @@ class CommandCategory(Enum):
     ANALYSIS = "analysis"
     REVIEW_CREATION = "review_creation"
     WORKFLOW = "workflow"
+    MEDICAL = "medical"
 
 @dataclass
 class CommandInfo:
@@ -144,6 +145,30 @@ class CommandService:
             complexity="advanced",
             estimated_time="Varies",
             prerequisites=["Paper critic analysis results"]
+        )
+        
+        # Medical research command
+        self.commands["@medical-research"] = CommandInfo(
+            name="@medical-research",
+            category=CommandCategory.MEDICAL,
+            description="Evidence-based medical research with PICO framework analysis",
+            usage="@medical-research task_type:<clinical_question|systematic_review|meta_analysis> question:\"<research question>\" [population:<population>] [intervention:<intervention>] [comparison:<comparison>] [outcome:<outcome>]",
+            examples=[
+                "@medical-research task_type:clinical_question question:\"高血圧患者においてACE阻害薬はARBより心血管イベントを減少させるか？\"",
+                "@medical-research task_type:systematic_review question:\"Does metformin reduce cardiovascular mortality in type 2 diabetes?\" population:\"type 2 diabetes patients\" intervention:\"metformin\" comparison:\"placebo or other antidiabetics\" outcome:\"cardiovascular mortality\"",
+                "@medical-research task_type:meta_analysis question:\"Effectiveness of statins in primary prevention of cardiovascular disease\""
+            ],
+            parameters=[
+                {"name": "task_type", "description": "Type of medical research (clinical_question, systematic_review, meta_analysis)", "required": "true"},
+                {"name": "question", "description": "Clinical research question in PICO format", "required": "true"},
+                {"name": "population", "description": "Target population (P in PICO)", "required": "false"},
+                {"name": "intervention", "description": "Intervention being studied (I in PICO)", "required": "false"},
+                {"name": "comparison", "description": "Comparison group or control (C in PICO)", "required": "false"},
+                {"name": "outcome", "description": "Primary outcome measures (O in PICO)", "required": "false"}
+            ],
+            complexity="advanced",
+            estimated_time="15-30 minutes",
+            prerequisites=["Access to medical databases", "Understanding of evidence-based medicine"]
         )
     
     def get_command_info(self, command_name: str) -> Optional[CommandInfo]:

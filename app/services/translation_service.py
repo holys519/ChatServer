@@ -74,6 +74,22 @@ English translation:"""
             print(f"❌ Translation to English failed: {str(e)}")
             return japanese_text
     
+    async def translate_text(self, text: str, source_lang: str = "ja", target_lang: str = "en") -> str:
+        """
+        Deprecated alias for translate_to_english() / translate_to_japanese()
+        This method exists for backward compatibility only.
+        Please use translate_to_english() or translate_to_japanese() instead.
+        """
+        print("⚠️ Warning: translate_text() is deprecated. Use translate_to_english() or translate_to_japanese() instead.")
+        
+        if source_lang == "ja" and target_lang == "en":
+            return await self.translate_to_english(text)
+        elif source_lang == "en" and target_lang == "ja":
+            return await self.translate_to_japanese(text)
+        else:
+            # Default behavior for unsupported language pairs
+            return text
+    
     async def translate_to_japanese(self, english_text: str) -> str:
         """
         Translate English text to natural Japanese
