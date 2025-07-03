@@ -63,4 +63,5 @@ echo "Press Ctrl+C to stop the server"
 echo ""
 
 # Run the server using uv
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port $PORT
+# WSL環境でのlocalhost接続問題を解決するため、127.0.0.1を使用
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port $PORT

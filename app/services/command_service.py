@@ -170,6 +170,48 @@ class CommandService:
             estimated_time="15-30 minutes",
             prerequisites=["Access to medical databases", "Understanding of evidence-based medicine"]
         )
+        
+        # Document Q&A command with RAG
+        self.commands["@doc-qa"] = CommandInfo(
+            name="@doc-qa",
+            category=CommandCategory.ANALYSIS,
+            description="Ask questions about uploaded documents using RAG (Retrieval Augmented Generation)",
+            usage="@doc-qa <question>",
+            examples=[
+                "@doc-qa この論文の主な結論は何ですか？",
+                "@doc-qa What methodology was used in this research?",
+                "@doc-qa 機械学習の手法についてどう説明されていますか？",
+                "@doc-qa Summarize the key findings from the uploaded documents"
+            ],
+            parameters=[
+                {"name": "question", "type": "string", "required": "true", "description": "Question about the uploaded documents"}
+            ],
+            complexity="beginner",
+            estimated_time="30 seconds - 1 minute",
+            prerequisites=["Documents must be uploaded and processed"]
+        )
+        
+        # Knowledge search command
+        self.commands["@knowledge-search"] = CommandInfo(
+            name="@knowledge-search",
+            category=CommandCategory.ANALYSIS,
+            description="Semantic search across uploaded documents and knowledge base",
+            usage="@knowledge-search <query> [threshold:0.7] [max_results:10]",
+            examples=[
+                "@knowledge-search machine learning algorithms",
+                "@knowledge-search COVID-19 treatment threshold:0.8",
+                "@knowledge-search 深層学習 max_results:5",
+                "@knowledge-search neural networks threshold:0.6 max_results:15"
+            ],
+            parameters=[
+                {"name": "query", "type": "string", "required": "true", "description": "Search query for semantic search"},
+                {"name": "threshold", "type": "float", "required": "false", "description": "Similarity threshold (0.0-1.0)", "default": "0.7"},
+                {"name": "max_results", "type": "integer", "required": "false", "description": "Maximum number of results", "default": "10"}
+            ],
+            complexity="beginner",
+            estimated_time="10-30 seconds",
+            prerequisites=["Documents must be uploaded and processed"]
+        )
     
     def get_command_info(self, command_name: str) -> Optional[CommandInfo]:
         """Get information about a specific command"""

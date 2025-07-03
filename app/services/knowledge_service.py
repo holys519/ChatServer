@@ -11,6 +11,8 @@ from datetime import datetime
 from fastapi import UploadFile
 
 from app.core.config import settings
+from app.services.enhanced_document_processor import EnhancedDocumentProcessor
+from app.models.enhanced_schemas import EnhancedChunk
 
 # Firebase service import
 try:
@@ -53,6 +55,14 @@ try:
 except ImportError:
     gemini_service = None
     GEMINI_AVAILABLE = False
+
+# Enhanced knowledge graph service
+try:
+    from app.services.enhanced_knowledge_graph_service import enhanced_knowledge_graph_service
+    ENHANCED_KG_AVAILABLE = True
+except ImportError:
+    enhanced_knowledge_graph_service = None
+    ENHANCED_KG_AVAILABLE = False
 
 class KnowledgeService:
     def __init__(self):
@@ -102,6 +112,12 @@ class KnowledgeService:
         else:
             print("⚠️ Gemini service not available")
         
+        # Initialize enhanced document processor
+        self.enhanced_processor = EnhancedDocumentProcessor(
+            project_id=project_id,
+            location=location
+        )
+        
         self.initialized = True
         print("✅ Knowledge service initialized with enhanced features")
     
@@ -109,16 +125,18 @@ class KnowledgeService:
         self, 
         job_id: str, 
         user_id: str, 
-        file: UploadFile, 
+        file_content: bytes,
+        file_name: str,
+        content_type: str,
         options: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Process uploaded document with Firestore integration"""
         print(f"🚀 Starting document processing for job {job_id}")
-        print(f"📄 Processing file: {file.filename} (type: {file.content_type})")
+        print(f"📄 Processing file: {file_name} (type: {content_type})")
         
         try:
-            # Read file content (for validation)
-            content = await file.read()
+            # File content is already available as bytes
+            content = file_content
             file_size = len(content)
             
             print(f"📊 File size: {file_size} bytes")
@@ -127,7 +145,7 @@ class KnowledgeService:
             job_data = {
                 'id': job_id,
                 'user_id': user_id,
-                'document_name': file.filename,
+                'document_name': file_name,
                 'status': 'processing',
                 'progress': 10,
                 'current_step': 'Document received',
@@ -141,11 +159,11 @@ class KnowledgeService:
             
             # Step 1: Upload to Cloud Storage
             await self._update_job_progress(job_id, 20, 'Uploading to Cloud Storage')
-            storage_path = await self._upload_to_storage(job_id, user_id, file)
+            storage_path = await self._upload_to_storage(job_id, user_id, content, file_name, content_type)
             
             # Step 2: Extract text with Document AI
             await self._update_job_progress(job_id, 30, 'Extracting text with Document AI')
-            extracted_text = await self._extract_text_with_docai(storage_path, file.content_type, file.filename)
+            extracted_text = await self._extract_text_with_docai(storage_path, content_type, file_name)
             
             # Step 3: Chunk text for processing
             await self._update_job_progress(job_id, 50, 'Chunking text for embeddings')
@@ -215,6 +233,232 @@ class KnowledgeService:
             }
             await self._save_processing_job(error_data)
             return error_data
+    
+    async def process_document_enhanced(
+        self, 
+        job_id: str, 
+        user_id: str, 
+        file_content: bytes,
+        file_name: str,
+        content_type: str,
+        options: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Enhanced document processing with location tracking"""
+        print(f"🚀 Starting enhanced document processing for job {job_id}")
+        
+        try:
+            # Use enhanced processor for document analysis
+            enhanced_chunks, processing_status = await self.enhanced_processor.process_document_with_location(
+                file_content=file_content,
+                file_name=file_name,
+                content_type=content_type,
+                job_id=job_id,
+                chunk_size=options.get('chunk_size', 500),
+                overlap_size=options.get('overlap_size', 50)
+            )
+            
+            # Update processing status with user_id
+            processing_status.user_id = user_id
+            
+            # Save initial job to Firestore
+            await self._save_enhanced_processing_job(processing_status.dict())
+            
+            # Generate embeddings if enabled
+            if options.get('enable_vector_search', True) and enhanced_chunks:
+                await self._update_job_progress(job_id, 60, 'Generating vector embeddings')
+                
+                # Extract text for embedding generation
+                chunk_texts = [chunk.text for chunk in enhanced_chunks]
+                embeddings = await self._generate_embeddings(chunk_texts)
+                
+                if embeddings:
+                    # Add embeddings to chunks
+                    for chunk, embedding in zip(enhanced_chunks, embeddings):
+                        chunk.embedding = embedding
+                        chunk.embedding_model = "textembedding-gecko@003"
+                
+                # Save enhanced vector chunks to Firestore
+                await self._save_enhanced_vector_chunks(job_id, user_id, enhanced_chunks)
+            
+            # Enhanced knowledge graph extraction (if enabled)
+            if options.get('enable_knowledge_graph', True) and enhanced_chunks:
+                await self._update_enhanced_job_progress(job_id, 80, 'knowledge_graph', 'Extracting enhanced knowledge graph')
+                
+                # Combine all chunk text for knowledge extraction
+                full_text = "\n\n".join([chunk.text for chunk in enhanced_chunks])
+                
+                # Prepare chunk data for enhanced knowledge graph service
+                chunk_data = []
+                for chunk in enhanced_chunks:
+                    chunk_data.append({
+                        'id': chunk.id,
+                        'text': chunk.text,
+                        'metadata': chunk.metadata.dict()
+                    })
+                
+                # Use enhanced knowledge graph service if available
+                if ENHANCED_KG_AVAILABLE and enhanced_knowledge_graph_service:
+                    try:
+                        print("🧠 Using enhanced knowledge graph extraction")
+                        knowledge_graph = await enhanced_knowledge_graph_service.extract_enhanced_knowledge_graph(
+                            text=full_text,
+                            chunks=chunk_data,
+                            user_id=user_id,
+                            document_id=job_id,
+                            document_name=file_name
+                        )
+                        entities = knowledge_graph.get('entities', [])
+                        relations = knowledge_graph.get('relations', [])
+                        print(f"✅ Enhanced knowledge graph: {len(entities)} entities, {len(relations)} relations")
+                    except Exception as e:
+                        print(f"⚠️ Enhanced knowledge graph extraction failed: {str(e)}")
+                        # Fallback to basic extraction
+                        knowledge_graph = await self._extract_knowledge_graph(full_text, [])
+                        entities = knowledge_graph.get('entities', [])
+                        relations = knowledge_graph.get('relations', [])
+                else:
+                    print("⚠️ Enhanced knowledge graph service not available, using basic extraction")
+                    knowledge_graph = await self._extract_knowledge_graph(full_text, [])
+                    entities = knowledge_graph.get('entities', [])
+                    relations = knowledge_graph.get('relations', [])
+                
+                # Save knowledge graph to Firestore (basic format for compatibility)
+                await self._save_knowledge_graph(job_id, user_id, entities, relations)
+            
+            await self._update_job_progress(job_id, 100, 'Processing completed')
+            
+            # Create enhanced document record
+            doc_data = {
+                'id': job_id,
+                'user_id': user_id,
+                'name': file_name,
+                'processing_status': 'completed',
+                'file_size': len(file_content),
+                'chunks_count': len(enhanced_chunks),
+                'pages_count': processing_status.total_pages,
+                'created_at': datetime.now(),
+                'enhanced_processing': True,
+                'processing_version': '2.0'
+            }
+            
+            await self._save_processed_document(doc_data)
+            
+            return {
+                'status': 'completed',
+                'job_id': job_id,
+                'chunks_count': len(enhanced_chunks),
+                'pages_count': processing_status.total_pages,
+                'enhanced': True
+            }
+            
+        except Exception as e:
+            print(f"❌ Enhanced document processing error: {str(e)}")
+            
+            error_data = {
+                'id': job_id,
+                'user_id': user_id,
+                'document_name': file_name,
+                'status': 'failed',
+                'progress': 0,
+                'error_message': str(e),
+                'created_at': datetime.now(),
+                'enhanced_processing': True
+            }
+            await self._save_enhanced_processing_job(error_data)
+            return error_data
+    
+    async def _save_enhanced_processing_job(self, job_data: Dict[str, Any]):
+        """Save enhanced processing job to Firestore"""
+        if not FIREBASE_AVAILABLE or not firebase_service.is_available():
+            print("⚠️ Firebase not available, skipping enhanced job save")
+            return
+            
+        try:
+            db = firebase_service.get_firestore_client()
+            db.collection('enhanced_processing_jobs').document(job_data['job_id']).set(job_data)
+            print(f"💾 Saved enhanced processing job {job_data['job_id']} to Firestore")
+        except Exception as e:
+            print(f"❌ Error saving enhanced processing job: {str(e)}")
+    
+    async def _save_enhanced_vector_chunks(self, job_id: str, user_id: str, chunks: List[EnhancedChunk]):
+        """Save enhanced vector chunks to Firestore"""
+        if not FIREBASE_AVAILABLE or not firebase_service.is_available():
+            print("⚠️ Firebase not available, skipping enhanced vector chunk save")
+            return
+            
+        try:
+            db = firebase_service.get_firestore_client()
+            
+            for chunk in chunks:
+                # Convert enhanced chunk to Firestore-compatible dict
+                chunk_data = {
+                    'id': chunk.id,
+                    'job_id': job_id,
+                    'user_id': user_id,
+                    'text': chunk.text,
+                    'embedding': chunk.embedding,
+                    'embedding_model': chunk.embedding_model,
+                    'prev_chunk_id': chunk.prev_chunk_id,
+                    'next_chunk_id': chunk.next_chunk_id,
+                    'related_chunks': chunk.related_chunks,
+                    'metadata': {
+                        'document_id': chunk.metadata.document_id,
+                        'document_name': chunk.metadata.document_name,
+                        'location': {
+                            'page_number': chunk.metadata.location.page_number,
+                            'bounding_box': chunk.metadata.location.bounding_box,
+                            'paragraph_index': chunk.metadata.location.paragraph_index,
+                            'line_range': chunk.metadata.location.line_range
+                        },
+                        'chunk_type': chunk.metadata.chunk_type.value,
+                        'hierarchy_level': chunk.metadata.hierarchy_level,
+                        'parent_section': chunk.metadata.parent_section,
+                        'global_chunk_index': chunk.metadata.global_chunk_index,
+                        'page_chunk_index': chunk.metadata.page_chunk_index,
+                        'word_count': chunk.metadata.word_count,
+                        'char_count': chunk.metadata.char_count,
+                        'sentence_count': chunk.metadata.sentence_count,
+                        'processing_version': chunk.metadata.processing_version,
+                        'extracted_at': chunk.metadata.extracted_at
+                    },
+                    'created_at': datetime.now()
+                }
+                
+                db.collection('enhanced_vector_chunks').document(chunk.id).set(chunk_data)
+            
+            print(f"💾 Saved {len(chunks)} enhanced vector chunks to Firestore")
+            
+        except Exception as e:
+            print(f"❌ Error saving enhanced vector chunks: {str(e)}")
+    
+    async def get_enhanced_processing_jobs(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get enhanced processing jobs for a user"""
+        if not FIREBASE_AVAILABLE or not firebase_service.is_available():
+            print("⚠️ Firebase not available, returning empty enhanced jobs list")
+            return []
+            
+        try:
+            db = firebase_service.get_firestore_client()
+            jobs_ref = db.collection('enhanced_processing_jobs')
+            query = jobs_ref.where('user_id', '==', user_id).order_by('started_at', direction='DESCENDING').limit(20)
+            
+            jobs = []
+            for doc in query.stream():
+                job_data = doc.to_dict()
+                # Convert Firestore timestamps to ISO strings if needed
+                if 'started_at' in job_data and hasattr(job_data['started_at'], 'isoformat'):
+                    job_data['started_at'] = job_data['started_at'].isoformat()
+                if 'updated_at' in job_data and hasattr(job_data['updated_at'], 'isoformat'):
+                    job_data['updated_at'] = job_data['updated_at'].isoformat()
+                    
+                jobs.append(job_data)
+            
+            print(f"📋 Retrieved {len(jobs)} enhanced processing jobs for user {user_id}")
+            return jobs
+            
+        except Exception as e:
+            print(f"❌ Error getting enhanced processing jobs: {str(e)}")
+            return []
     
     async def vector_search(
         self, 
@@ -639,11 +883,8 @@ class KnowledgeService:
         except Exception as e:
             print(f"❌ Error saving processed document: {str(e)}")
     
-    async def _upload_to_storage(self, job_id: str, user_id: str, file: UploadFile) -> str:
+    async def _upload_to_storage(self, job_id: str, user_id: str, content: bytes, file_name: str, content_type: str) -> str:
         """Upload file to Cloud Storage or save locally"""
-        # Reset file pointer
-        await file.seek(0)
-        content = await file.read()
         
         if self.storage_client and STORAGE_AVAILABLE:
             try:
@@ -660,9 +901,9 @@ class KnowledgeService:
                     bucket = self.storage_client.bucket(bucket_name)
                 
                 # Upload file
-                blob_name = f"users/{user_id}/documents/{job_id}/{file.filename}"
+                blob_name = f"users/{user_id}/documents/{job_id}/{file_name}"
                 blob = bucket.blob(blob_name)
-                blob.upload_from_string(content, content_type=file.content_type)
+                blob.upload_from_string(content, content_type=content_type)
                 
                 storage_uri = f"gs://{bucket_name}/{blob_name}"
                 print(f"✅ Uploaded to Cloud Storage: {storage_uri}")
@@ -674,7 +915,7 @@ class KnowledgeService:
         # Fallback: save to local temp file
         import tempfile
         temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, f"{job_id}_{file.filename}")
+        temp_path = os.path.join(temp_dir, f"{job_id}_{file_name}")
         
         with open(temp_path, 'wb') as f:
             f.write(content)

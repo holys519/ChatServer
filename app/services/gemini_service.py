@@ -25,8 +25,8 @@ class GeminiService:
                 return
                 
             print(f"Initializing Gemini service with:")
-            print(f"  Project ID: {self.project_id}")
-            print(f"  Location: {self.location}")
+            # print(f"  Project ID: {self.project_id}")
+            # print(f"  Location: {self.location}")
                 
             # Use Google Gen AI SDK with Vertex AI
             from google import genai
@@ -50,7 +50,7 @@ class GeminiService:
                 print("Testing Gemini service connection...")
                 # Try to access available models or make a simple call
                 self.initialized = True
-                print(f"✅ Gemini service initialized successfully with project: {self.project_id}")
+                # print(f"✅ Gemini service initialized successfully with project: {self.project_id}")
             except Exception as test_error:
                 print(f"⚠️ Gemini service client created but connection test failed: {test_error}")
                 self.initialized = True  # Still mark as initialized for now

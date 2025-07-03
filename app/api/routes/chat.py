@@ -1656,6 +1656,240 @@ Based on the evidence evaluation:
                 print(f"Study helper command processing error: {str(command_error)}")
                 response_text = f"Error processing @study-helper command: {str(command_error)}"
         
+        elif request.message.startswith("@doc-qa"):
+            # Handle document Q&A command with RAG
+            try:
+                # Extract question from command
+                question = request.message.replace("@doc-qa", "").strip()
+                if not question or len(question) < 5:
+                    response_text = """Please provide a question about your uploaded documents after @doc-qa
+
+**Examples:**
+```
+@doc-qa この論文の主な結論は何ですか？
+@doc-qa What methodology was used in this research?
+@doc-qa 機械学習の手法についてどう説明されていますか？
+@doc-qa Summarize the key findings from the uploaded documents
+```
+
+**Note:** You need to upload and process documents first in the About tab before using this command."""
+                else:
+                    # Create task ID
+                    task_id = str(uuid.uuid4())
+                    
+                    # Get user ID
+                    user_id = await get_user_id_from_auth(authorization)
+                    if not user_id:
+                        response_text = "❌ Authentication required. Please log in to use document Q&A functionality."
+                    else:
+                        # Prepare input for document Q&A agent
+                        doc_qa_input = {
+                            'question': question,
+                            'user_id': user_id,
+                            'language': 'japanese' if any(ord(char) > 127 for char in question) else 'english'
+                        }
+                        
+                        try:
+                            # Import and execute document Q&A agent
+                            from app.agents.document_qa_agent import document_qa_agent
+                            
+                            doc_qa_result = await document_qa_agent.execute(
+                                task_id=task_id,
+                                input_data=doc_qa_input
+                            )
+                            
+                            # Format response
+                            answer = doc_qa_result.get('answer', 'No answer available')
+                            sources = doc_qa_result.get('sources', [])
+                            confidence = doc_qa_result.get('confidence', 'low')
+                            search_count = doc_qa_result.get('search_results_count', 0)
+                            rag_context = doc_qa_result.get('rag_context', {})
+                            
+                            # Confidence icon
+                            confidence_icon = {
+                                'high': '🟢',
+                                'medium': '🟡', 
+                                'low': '🔴'
+                            }.get(confidence, '❓')
+                            
+                            response_text = f"""# 📖 Document Q&A Result {confidence_icon}
+                            
+## Question
+"{question}"
+
+## Answer
+{answer}
+
+## Confidence Level
+**{confidence.title()}** ({confidence_icon})
+"""
+                            
+                            # Add source information if available
+                            if sources:
+                                response_text += f"\n## Sources ({len(sources)} documents found)\n"
+                                for i, source in enumerate(sources[:3], 1):  # Show top 3 sources
+                                    similarity = source.get('similarity', 0)
+                                    preview = source.get('content_preview', '')
+                                    
+                                    response_text += f"""
+**Source {i}** (Similarity: {similarity:.2f})
+```
+{preview}
+```"""
+                                
+                                if len(sources) > 3:
+                                    response_text += f"\n*... and {len(sources) - 3} more relevant sources*"
+                            
+                            # Add RAG context information
+                            if rag_context:
+                                chunks_used = rag_context.get('chunks_used', 0)
+                                avg_similarity = rag_context.get('avg_similarity', 0)
+                                
+                                response_text += f"""
+
+## Search Details
+- **Relevant chunks found**: {chunks_used}
+- **Average similarity**: {avg_similarity:.2f}
+- **Search results**: {search_count}
+"""
+                            
+                            response_text += "\n---\n*Answer generated using RAG (Retrieval Augmented Generation) from your uploaded documents*"
+                            
+                        except Exception as agent_error:
+                            print(f"Document Q&A agent execution error: {str(agent_error)}")
+                            response_text = f"Error executing document Q&A: {str(agent_error)}\n\nPlease ensure you have uploaded and processed documents in the About tab first."
+                            
+            except Exception as command_error:
+                print(f"Document Q&A command processing error: {str(command_error)}")
+                response_text = f"Error processing @doc-qa command: {str(command_error)}"
+        
+        elif request.message.startswith("@knowledge-search"):
+            # Handle knowledge search command
+            try:
+                # Parse command and parameters
+                command_parts = request.message[len("@knowledge-search"):].strip().split()
+                if not command_parts or len(command_parts) < 1:
+                    response_text = """Please provide a search query after @knowledge-search
+
+**Examples:**
+```
+@knowledge-search machine learning algorithms
+@knowledge-search COVID-19 treatment threshold:0.8
+@knowledge-search 深層学習 max_results:5
+@knowledge-search neural networks threshold:0.6 max_results:15
+```
+
+**Parameters:**
+- `threshold:0.7` - Similarity threshold (0.0-1.0, default: 0.7)
+- `max_results:10` - Maximum number of results (default: 10)"""
+                else:
+                    # Extract query and parameters
+                    query_parts = []
+                    threshold = 0.7
+                    max_results = 10
+                    
+                    for part in command_parts:
+                        if part.startswith("threshold:"):
+                            try:
+                                threshold = float(part.split(":", 1)[1])
+                                threshold = max(0.0, min(1.0, threshold))  # Clamp between 0 and 1
+                            except ValueError:
+                                pass
+                        elif part.startswith("max_results:"):
+                            try:
+                                max_results = int(part.split(":", 1)[1])
+                                max_results = max(1, min(50, max_results))  # Clamp between 1 and 50
+                            except ValueError:
+                                pass
+                        else:
+                            query_parts.append(part)
+                    
+                    query = " ".join(query_parts)
+                    
+                    if not query:
+                        response_text = "❌ Please provide a search query. Example: `@knowledge-search machine learning`"
+                    else:
+                        # Get user ID
+                        user_id = await get_user_id_from_auth(authorization)
+                        if not user_id:
+                            response_text = "❌ Authentication required. Please log in to use knowledge search functionality."
+                        else:
+                            try:
+                                # Perform knowledge search
+                                from app.services.knowledge_service import knowledge_service
+                                
+                                search_filters = {
+                                    'similarity_threshold': threshold,
+                                    'max_results': max_results
+                                }
+                                
+                                search_results = await knowledge_service.vector_search(
+                                    user_id=user_id,
+                                    query=query,
+                                    filters=search_filters,
+                                    include_metadata=True
+                                )
+                                
+                                if not search_results:
+                                    response_text = f"""# 🔍 Knowledge Search Results
+                                    
+## Query
+"{query}"
+
+## Results
+No relevant documents found for this query.
+
+**Suggestions:**
+- Try different keywords or phrases
+- Lower the similarity threshold (current: {threshold:.2f})
+- Check if your documents have been processed successfully
+- Upload more relevant documents in the About tab
+
+**Search Parameters:**
+- Similarity threshold: {threshold:.2f}
+- Max results: {max_results}"""
+                                else:
+                                    response_text = f"""# 🔍 Knowledge Search Results
+                                    
+## Query
+"{query}"
+
+## Results ({len(search_results)} found)
+"""
+                                    
+                                    for i, result in enumerate(search_results, 1):
+                                        content = result.get('content', '')
+                                        similarity = result.get('similarity', 0)
+                                        metadata = result.get('metadata', {})
+                                        
+                                        # Truncate content for display
+                                        content_preview = content[:300] + "..." if len(content) > 300 else content
+                                        
+                                        response_text += f"""
+### Result {i} (Similarity: {similarity:.3f})
+```
+{content_preview}
+```
+**Metadata**: Job ID: {metadata.get('job_id', 'N/A')}, Words: {metadata.get('word_count', 0)}
+"""
+                                    
+                                    response_text += f"""
+## Search Parameters
+- **Similarity threshold**: {threshold:.2f}
+- **Max results**: {max_results}
+- **Total chunks searched**: Based on user's uploaded documents
+
+---
+*Semantic search powered by Vertex AI embeddings*"""
+                                
+                            except Exception as search_error:
+                                print(f"Knowledge search error: {str(search_error)}")
+                                response_text = f"Error performing knowledge search: {str(search_error)}\n\nPlease ensure you have uploaded and processed documents in the About tab first."
+                            
+            except Exception as command_error:
+                print(f"Knowledge search command processing error: {str(command_error)}")
+                response_text = f"Error processing @knowledge-search command: {str(command_error)}"
+        
         elif request.message.startswith("@fact-checker"):
             # Handle fact checker command
             try:
